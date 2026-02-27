@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # ==================== CREDENCIALES ====================
-SUPABASE_DB_URL = "postgresql://postgres:Negritasantia@db.hhzuggxvdzzfmnvfulmp.supabase.co:5432/postgres"
+SUPABASE_DB_URL = "postgresql://postgres.hhzuggxvdzzfmnvfulmp:Negritasantia@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
 
 # ==================== ESTADOS DEL VIAJE ====================
 ESTADOS_VIAJE = ["✅ Completado", "❌ Anulado", "⚠️ Incumplido", "🔄 En Curso"]
