@@ -61,6 +61,49 @@ TODOS_CONDUCTORES = sorted([
 
 ESTADOS_VIAJE = ["✅ Completado", "❌ Anulado", "⚠️ Incumplido", "🔄 En Curso"]
 
+# ==================== RUTAS FRECUENTES ====================
+RUTAS_FRECUENTES = [
+    ("PUERTO PALERMO", "AGOFER"),
+    ("PUERTO BARRANQUILLA", "VIA40"),
+    ("PUERTO BARRANQUILLA", "PROCAR"),
+    ("PUERTO BARRANQUILLA", "CIENAGA"),
+    ("PUERTO BARRANQUILLA", "MEICO"),
+    ("PUERTO BARRANQUILLA", "MEICO CIRCUNVALAR"),
+    ("PUERTO BARRANQUILLA", "SOLEDAD"),
+    ("PUERTO PALERMO", "ZF BAQ"),
+    ("PUERTO BARRANQUILLA", "ZF BAQ"),
+    ("ZF BAQ", "ZF BAQ"),
+    ("ZF BAQ", "JUAN MINA"),
+    ("ZF BAQ", "TRIANGULO"),
+    ("PUERTO BARRANQUILLA", "JUAN MINA"),
+    ("PUERTO BARRANQUILLA", "ALMAGRARIO"),
+    ("PUERTO BARRANQUILLA", "ALPOPULAR"),
+    ("PUERTO BARRANQUILLA", "AGOFER"),
+    ("PUERTO BARRANQUILLA", "AGUACHICA"),
+    ("PUERTO BARRANQUILLA", "IMPORTADO"),
+    ("PUERTO BARRANQUILLA", "GALAPA"),
+    ("PUERTO BARRANQUILLA", "CAYENAS"),
+    ("PUERTO BARRANQUILLA", "OMEGA"),
+    ("PUERTO BARRANQUILLA", "SANTA MARTA"),
+    ("PUERTO BARRANQUILLA", "MEDELLIN"),
+    ("PUERTO BARRANQUILLA", "MONTERIA"),
+    ("PUERTO BARRANQUILLA", "PARAGUACHON"),
+    ("PUERTO BARRANQUILLA", "SAN ROQUE"),
+    ("PUERTO BARRANQUILLA", "VIA AEROPUERTO"),
+    ("PUERTO BARRANQUILLA", "FRENTE AEROPUERTO"),
+    ("PUERTO PALERMO", "CIRCUNVALAR"),
+    ("PUERTO PALERMO", "MALAMBO"),
+    ("PUERTO PALERMO", "MONTERIA"),
+    ("CENTRO LOGISTICO CARTAGENA", "YARA"),
+    ("CARTAGENA", "BARRANCABERMEJA"),
+    ("PALMAR", "CARTAGENA"),
+    ("MALAMBO", "MONTERIA"),
+    ("PALERMO", "MALAMBO"),
+]
+
+ORIGENES_FRECUENTES = sorted(set(r[0] for r in RUTAS_FRECUENTES))
+LABEL_MANUAL = "✏️ Escribir manualmente..."
+
 # ==================== CSS ====================
 st.markdown("""
 <style>
@@ -467,9 +510,20 @@ def main():
             with c4:
                 cliente = st.text_input("🏢 Cliente")
 
-            c5, c6 = st.columns(2)
-            with c5: origen  = st.text_input("📍 Origen")
-            with c6: destino = st.text_input("🏁 Destino")
+            # Origen / Destino con rutas frecuentes
+            st.markdown("#### 🗺️ Ruta")
+            ruta_opts = [f"{o}  →  {d}" for o, d in RUTAS_FRECUENTES] + [LABEL_MANUAL]
+            ruta_sel = st.selectbox("🗺️ Ruta frecuente", ruta_opts, index=len(ruta_opts)-1)
+
+            if ruta_sel == LABEL_MANUAL:
+                c5, c6 = st.columns(2)
+                with c5: origen  = st.text_input("📍 Origen (manual)")
+                with c6: destino = st.text_input("🏁 Destino (manual)")
+            else:
+                origen, destino = ruta_sel.split("  →  ")
+                c5, c6 = st.columns(2)
+                with c5: st.info(f"📍 **Origen:** {origen}")
+                with c6: st.info(f"🏁 **Destino:** {destino}")
 
             st.markdown("#### ⏱️ Tiempos de Operación")
             h1, h2, h3, h4 = st.columns(4)
