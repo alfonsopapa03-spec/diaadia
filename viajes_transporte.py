@@ -104,6 +104,30 @@ RUTAS_FRECUENTES = [
 ORIGENES_FRECUENTES = sorted(set(r[0] for r in RUTAS_FRECUENTES))
 LABEL_MANUAL = "✏️ Escribir manualmente..."
 
+# ==================== CLIENTES FRECUENTES ====================
+CLIENTES_FRECUENTES = [
+    "AGOFER",
+    "MONOMEROS COLOMBO VENEZOLANOS S.A.",
+    "PROCAR",
+    "MEICO",
+    "WORLD",
+    "TRAIDING",
+    "MAT2",
+    "SULOGISTICS",
+    "SUDECO",
+    "TRIANGULO",
+    "DELTA",
+    "CARGO ANDINA",
+    "TRANSOLICAR",
+    "TLC",
+    "TULUA MADERAS",
+    "KBINA",
+    "KABIBA",
+    "PASIFIC",
+    "MOTOTRANSPORTAMO",
+]
+LABEL_MANUAL_CLI = "✏️ Escribir manualmente..."
+
 # ==================== CSS ====================
 st.markdown("""
 <style>
@@ -508,7 +532,11 @@ def main():
                 conductor_sel = st.selectbox("👤 Conductor", cond_opts, index=cond_default)
                 conductor = "" if conductor_sel == "— Seleccionar —" else conductor_sel
             with c4:
-                cliente = st.text_input("🏢 Cliente")
+                cli_sel = st.selectbox("🏢 Cliente", CLIENTES_FRECUENTES + [LABEL_MANUAL_CLI])
+                if cli_sel == LABEL_MANUAL_CLI:
+                    cliente = st.text_input("🏢 Cliente (manual)")
+                else:
+                    cliente = cli_sel
 
             # Origen / Destino con rutas frecuentes
             st.markdown("#### 🗺️ Ruta")
@@ -672,7 +700,15 @@ def main():
                             default_e = cond_opts_e.index(cond_fijo_e) if cond_fijo_e in cond_opts_e else (cond_opts_e.index(cond_actual) if cond_actual in cond_opts_e else 0)
                             e_cond_sel = st.selectbox("👤 Conductor", cond_opts_e, index=default_e, key=f"ec_{vid}")
                             e_conductor = "" if e_cond_sel == "— Seleccionar —" else e_cond_sel
-                        with ec4: e_cliente = st.text_input("Cliente", value=str(row.get("cliente") or ""), key=f"ecl_{vid}")
+                        with ec4:
+                            cli_actual = str(row.get("cliente") or "")
+                            cli_opts = CLIENTES_FRECUENTES + [LABEL_MANUAL_CLI]
+                            cli_idx = cli_opts.index(cli_actual) if cli_actual in cli_opts else len(cli_opts)-1
+                            e_cli_sel = st.selectbox("Cliente", cli_opts, index=cli_idx, key=f"ecl_{vid}")
+                            if e_cli_sel == LABEL_MANUAL_CLI:
+                                e_cliente = st.text_input("Cliente (manual)", value=cli_actual if cli_actual not in CLIENTES_FRECUENTES else "", key=f"ecl_m_{vid}")
+                            else:
+                                e_cliente = e_cli_sel
 
                         er1, er2 = st.columns(2)
                         with er1: e_origen  = st.text_input("Origen",  value=str(row.get("origen") or ""),  key=f"eo_{vid}")
