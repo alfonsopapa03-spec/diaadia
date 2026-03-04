@@ -533,25 +533,22 @@ def main():
                 conductor = "" if conductor_sel == "— Seleccionar —" else conductor_sel
             with c4:
                 cli_sel = st.selectbox("🏢 Cliente", CLIENTES_FRECUENTES + [LABEL_MANUAL_CLI])
-                if cli_sel == LABEL_MANUAL_CLI:
-                    cliente = st.text_input("🏢 Cliente (manual)")
-                else:
-                    cliente = cli_sel
+                cliente_manual = st.text_input("✏️ Escribir cliente", placeholder="Solo si seleccionaste manual...", disabled=(cli_sel != LABEL_MANUAL_CLI))
+                cliente = cliente_manual if cli_sel == LABEL_MANUAL_CLI else cli_sel
 
             # Origen / Destino con rutas frecuentes
             st.markdown("#### 🗺️ Ruta")
             ruta_opts = [f"{o}  →  {d}" for o, d in RUTAS_FRECUENTES] + [LABEL_MANUAL]
             ruta_sel = st.selectbox("🗺️ Ruta frecuente", ruta_opts, index=len(ruta_opts)-1)
 
+            c5, c6 = st.columns(2)
             if ruta_sel == LABEL_MANUAL:
-                c5, c6 = st.columns(2)
-                with c5: origen  = st.text_input("📍 Origen (manual)")
-                with c6: destino = st.text_input("🏁 Destino (manual)")
+                with c5: origen  = st.text_input("📍 Origen", placeholder="Escribe el origen...")
+                with c6: destino = st.text_input("🏁 Destino", placeholder="Escribe el destino...")
             else:
-                origen, destino = ruta_sel.split("  →  ")
-                c5, c6 = st.columns(2)
-                with c5: st.info(f"📍 **Origen:** {origen}")
-                with c6: st.info(f"🏁 **Destino:** {destino}")
+                _origen_auto, _destino_auto = ruta_sel.split("  →  ")
+                with c5: origen  = st.text_input("📍 Origen", value=_origen_auto, disabled=True)
+                with c6: destino = st.text_input("🏁 Destino", value=_destino_auto, disabled=True)
 
             st.markdown("#### ⏱️ Tiempos de Operación")
             h1, h2, h3, h4 = st.columns(4)
