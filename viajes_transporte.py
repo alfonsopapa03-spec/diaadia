@@ -518,37 +518,48 @@ def main():
     with tab1:
         st.markdown("### Registrar Nuevo Viaje")
 
+        # Selectores fuera del form para reactividad
+        f1, f2, f3, f4 = st.columns(4)
+        with f1:
+            fecha_pre = st.date_input("📅 Fecha", datetime.now(), key="pre_fecha")
+        with f2:
+            placas_lista = list(PLACA_CONDUCTOR.keys())
+            placa_pre = st.selectbox("🚛 Placa", placas_lista, key="pre_placa")
+        with f3:
+            conductor_fijo = PLACA_CONDUCTOR.get(placa_pre)
+            cond_opts = ["— Seleccionar —"] + TODOS_CONDUCTORES
+            cond_default = cond_opts.index(conductor_fijo) if conductor_fijo in cond_opts else 0
+            conductor_sel = st.selectbox("👤 Conductor", cond_opts, index=cond_default, key="pre_conductor")
+        with f4:
+            cli_sel = st.selectbox("🏢 Cliente", CLIENTES_FRECUENTES + [LABEL_MANUAL_CLI], key="pre_cliente")
+
+        if cli_sel == LABEL_MANUAL_CLI:
+            cliente_pre = st.text_input("✏️ Escribir cliente manualmente", placeholder="Nombre del cliente...", key="pre_cli_manual")
+        else:
+            cliente_pre = cli_sel
+
+        st.markdown("#### 🗺️ Ruta")
+        ruta_opts = [f"{o}  →  {d}" for o, d in RUTAS_FRECUENTES] + [LABEL_MANUAL]
+        ruta_sel = st.selectbox("🗺️ Ruta frecuente", ruta_opts, index=len(ruta_opts)-1, key="pre_ruta")
+        c5, c6 = st.columns(2)
+        if ruta_sel == LABEL_MANUAL:
+            with c5: origen_pre  = st.text_input("📍 Origen", placeholder="Escribe el origen...", key="pre_origen")
+            with c6: destino_pre = st.text_input("🏁 Destino", placeholder="Escribe el destino...", key="pre_destino")
+        else:
+            _o, _d = ruta_sel.split("  →  ")
+            with c5: st.info(f"📍 **Origen:** {_o}")
+            with c6: st.info(f"🏁 **Destino:** {_d}")
+            origen_pre, destino_pre = _o, _d
+
         with st.form("form_viaje", clear_on_submit=True):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                fecha = st.date_input("📅 Fecha", datetime.now())
-            with c2:
-                placas_lista = list(PLACA_CONDUCTOR.keys())
-                placa = st.selectbox("🚛 Placa", placas_lista)
-            with c3:
-                conductor_fijo = PLACA_CONDUCTOR.get(placa)
-                cond_opts = ["— Seleccionar —"] + TODOS_CONDUCTORES
-                cond_default = cond_opts.index(conductor_fijo) if conductor_fijo in cond_opts else 0
-                conductor_sel = st.selectbox("👤 Conductor", cond_opts, index=cond_default)
-                conductor = "" if conductor_sel == "— Seleccionar —" else conductor_sel
-            with c4:
-                cli_sel = st.selectbox("🏢 Cliente", CLIENTES_FRECUENTES + [LABEL_MANUAL_CLI])
-                cliente_manual = st.text_input("✏️ Escribir cliente", placeholder="Solo si seleccionaste manual...", disabled=(cli_sel != LABEL_MANUAL_CLI))
-                cliente = cliente_manual if cli_sel == LABEL_MANUAL_CLI else cli_sel
-
-            # Origen / Destino con rutas frecuentes
-            st.markdown("#### 🗺️ Ruta")
-            ruta_opts = [f"{o}  →  {d}" for o, d in RUTAS_FRECUENTES] + [LABEL_MANUAL]
-            ruta_sel = st.selectbox("🗺️ Ruta frecuente", ruta_opts, index=len(ruta_opts)-1)
-
-            c5, c6 = st.columns(2)
-            if ruta_sel == LABEL_MANUAL:
-                with c5: origen  = st.text_input("📍 Origen", placeholder="Escribe el origen...")
-                with c6: destino = st.text_input("🏁 Destino", placeholder="Escribe el destino...")
-            else:
-                _origen_auto, _destino_auto = ruta_sel.split("  →  ")
-                with c5: origen  = st.text_input("📍 Origen", value=_origen_auto, disabled=True)
-                with c6: destino = st.text_input("🏁 Destino", value=_destino_auto, disabled=True)
+            fecha = fecha_pre
+            placa = placa_pre
+            conductor = "" if conductor_sel == "— Seleccionar —" else conductor_sel
+            cliente = cliente_pre
+            origen = origen_pre
+            destino = destino_pre
+            st.markdown(f"**Resumen:** `{placa}` | `{conductor}` | `{cliente}` | `{origen}` → `{destino}`")
+            st.divider()
 
             st.markdown("#### ⏱️ Tiempos de Operación")
             h1, h2, h3, h4 = st.columns(4)
