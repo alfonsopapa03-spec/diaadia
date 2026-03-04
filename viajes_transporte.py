@@ -459,14 +459,10 @@ def main():
                 placa = st.selectbox("🚛 Placa", placas_lista)
             with c3:
                 conductor_fijo = PLACA_CONDUCTOR.get(placa)
-                if conductor_fijo:
-                    st.markdown(f"**👤 Conductor**")
-                    st.markdown(f'<div class="conductor-auto">✅ {conductor_fijo}</div>', unsafe_allow_html=True)
-                    conductor = conductor_fijo
-                else:
-                    conductor = st.selectbox("👤 Conductor", ["— Seleccionar —"] + TODOS_CONDUCTORES)
-                    if conductor == "— Seleccionar —":
-                        conductor = ""
+                cond_opts = ["— Seleccionar —"] + TODOS_CONDUCTORES
+                cond_default = cond_opts.index(conductor_fijo) if conductor_fijo in cond_opts else 0
+                conductor_sel = st.selectbox("👤 Conductor", cond_opts, index=cond_default)
+                conductor = "" if conductor_sel == "— Seleccionar —" else conductor_sel
             with c4:
                 cliente = st.text_input("🏢 Cliente")
 
@@ -616,16 +612,11 @@ def main():
                             e_placa = st.selectbox("Placa", placas_e, index=placa_idx, key=f"ep_{vid}")
                         with ec3:
                             cond_fijo_e = PLACA_CONDUCTOR.get(e_placa)
-                            if cond_fijo_e:
-                                st.markdown(f"**Conductor**")
-                                st.markdown(f'<div class="conductor-auto">✅ {cond_fijo_e}</div>', unsafe_allow_html=True)
-                                e_conductor = cond_fijo_e
-                            else:
-                                cond_actual = str(row.get("conductor") or "")
-                                cond_opts = ["— Seleccionar —"] + TODOS_CONDUCTORES
-                                cond_idx = cond_opts.index(cond_actual) if cond_actual in cond_opts else 0
-                                e_conductor = st.selectbox("Conductor", cond_opts, index=cond_idx, key=f"ec_{vid}")
-                                if e_conductor == "— Seleccionar —": e_conductor = ""
+                            cond_actual = str(row.get("conductor") or "")
+                            cond_opts_e = ["— Seleccionar —"] + TODOS_CONDUCTORES
+                            default_e = cond_opts_e.index(cond_fijo_e) if cond_fijo_e in cond_opts_e else (cond_opts_e.index(cond_actual) if cond_actual in cond_opts_e else 0)
+                            e_cond_sel = st.selectbox("👤 Conductor", cond_opts_e, index=default_e, key=f"ec_{vid}")
+                            e_conductor = "" if e_cond_sel == "— Seleccionar —" else e_cond_sel
                         with ec4: e_cliente = st.text_input("Cliente", value=str(row.get("cliente") or ""), key=f"ecl_{vid}")
 
                         er1, er2 = st.columns(2)
