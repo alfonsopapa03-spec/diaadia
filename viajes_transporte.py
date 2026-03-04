@@ -558,8 +558,7 @@ def main():
             cliente = cliente_pre
             origen = origen_pre
             destino = destino_pre
-            st.markdown(f"**Resumen:** `{placa}` | `{conductor}` | `{cliente}` | `{origen}` → `{destino}`")
-            st.divider()
+
 
             st.markdown("#### ⏱️ Tiempos de Operación")
             h1, h2, h3, h4 = st.columns(4)
