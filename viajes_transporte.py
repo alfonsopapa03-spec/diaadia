@@ -129,6 +129,45 @@ CLIENTES_FRECUENTES = [
 ]
 LABEL_MANUAL_CLI = "✏️ Escribir manualmente..."
 
+# ==================== COORDENADAS POR LUGAR ====================
+COORDENADAS = {
+    "PUERTO BARRANQUILLA":      (10.9831, -74.7894),
+    "PUERTO PALERMO":           (10.9125, -74.7489),
+    "PALERMO":                  (10.9125, -74.7489),
+    "ZF BAQ":                   (10.9700, -74.8100),
+    "AGOFER":                   (10.9190, -74.8010),
+    "MEICO":                    (10.9650, -74.8350),
+    "MEICO CIRCUNVALAR":        (10.9680, -74.8320),
+    "PROCAR":                   (10.9550, -74.8200),
+    "VIA40":                    (10.9900, -74.8000),
+    "VIA AEROPUERTO":           (10.9990, -74.7780),
+    "FRENTE AEROPUERTO":        (10.9990, -74.7780),
+    "SOLEDAD":                  (10.9180, -74.7670),
+    "MALAMBO":                  (10.8610, -74.7730),
+    "GALAPA":                   (10.9060, -74.8880),
+    "JUAN MINA":                (10.9750, -74.9200),
+    "ALMAGRARIO":               (10.9620, -74.8150),
+    "ALPOPULAR":                (10.9600, -74.8180),
+    "CAYENAS":                  (10.9580, -74.8220),
+    "OMEGA":                    (10.9570, -74.8230),
+    "CIRCUNVALAR":              (10.9640, -74.8060),
+    "TRIANGULO":                (10.9660, -74.8080),
+    "IMPORTADO":                (10.9640, -74.8100),
+    "CIENAGA":                  (11.0060, -74.2510),
+    "SANTA MARTA":              (11.2408, -74.1990),
+    "SAN ROQUE":                (8.5310,  -73.5730),
+    "AGUACHICA":                (8.3097,  -73.6197),
+    "PARAGUACHON":              (11.3320, -72.3820),
+    "MONTERIA":                 (8.7575,  -75.8812),
+    "MEDELLIN":                 (6.2442,  -75.5812),
+    "BARRANCABERMEJA":          (7.0653,  -73.8547),
+    "CARTAGENA":                (10.3910, -75.4794),
+    "CENTRO LOGISTICO CARTAGENA": (10.4061, -75.5100),
+    "PALMAR":                   (10.7800, -75.1100),
+    "YARA":                     (10.3850, -75.4950),
+    "PROCAR":                   (10.9550, -74.8200),
+}
+
 # ==================== CSS ====================
 st.markdown("""
 <style>
@@ -362,12 +401,24 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         ("numero_importacion_bl","IMP / BL",18), ("manifiesto","MANIFIESTO",12),
         ("observacion","OBSERVACIÓN",28), ("estado","ESTADO",14),
     ]
+    # Columnas extra de coordenadas (no vienen del df, se calculan)
+    cols_coord = ["LAT. ORIGEN","LON. ORIGEN","LAT. DESTINO","LON. DESTINO"]
+    total_cols = len(columnas) + len(cols_coord)
+
+    ws.merge_cells(f"A1:{get_column_letter(total_cols)}1")
 
     for idx, (key, nombre, ancho) in enumerate(columnas, start=1):
         cell = ws.cell(row=2, column=idx, value=nombre)
         cell.font = ft_header; cell.fill = fill_header
         cell.alignment = centro; cell.border = borde
         ws.column_dimensions[get_column_letter(idx)].width = ancho
+    # Headers coordenadas
+    for i, nombre in enumerate(cols_coord, start=len(columnas)+1):
+        cell = ws.cell(row=2, column=i, value=nombre)
+        cell.font = ft_header
+        cell.fill = PatternFill("solid", start_color="1A5276")
+        cell.alignment = centro; cell.border = borde
+        ws.column_dimensions[get_column_letter(i)].width = 14
     ws.row_dimensions[2].height = 28
 
     for row_idx, (_, fila) in enumerate(df.iterrows(), start=3):
@@ -387,21 +438,27 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             cell.alignment = centro if key in ("fecha","placa","estado") or key.startswith("hora_") else izq
             cell.font = ft_anulado if es_an else (ft_incump if es_in else ft_normal)
             if fill_f: cell.fill = fill_f
-        ws.row_dimensions[row_idx].height = 18
 
-    total_row = len(df) + 3
-    ws.merge_cells(f"A{total_row}:M{total_row}")
-    ct = ws.cell(row=total_row, column=1, value=f"TOTAL VIAJES: {len(df)}")
-    ct.font = ft_total; ct.fill = fill_total; ct.alignment = centro
+        # Coordenadas origen y destino
+        origen_v  = str(fila.get("origen",  "") or "").strip().upper()
+        destino_v = str(fila.get("destino", "") or "").strip().upper()
+        lat_o, lon_o = COORDENADAS.get(origen_v,  (None, None))  if origen_v  in COORDENADAS else (None, None)
+        lat_d, lon_d = COORDENADAS.get(destino_v, (None, None)) if destino_v in COORDENADAS else (None, None)
+        fill_coord = PatternFill("solid", start_color="D6EAF8") if fill_f is None and row_idx % 2 == 0 else fill_f
+        for ci, val in enumerate([lat_o, lon_o, lat_d, lon_d], start=len(columnas)+1):
+            cell = ws.cell(row=row_idx, column=ci, value=val if val is not None else "")
+            cell.font = ft_normal; cell.border = borde; cell.alignment = centro
+            if fill_coord: cell.fill = fill_coord
+        ws.row_dimensions[row_idx].height = 18
 
     completados = len(df[df["estado"].str.contains("Completado", na=False)]) if "estado" in df.columns else 0
     anulados    = len(df[df["estado"].str.contains("Anulado",    na=False)]) if "estado" in df.columns else 0
     incumplidos = len(df[df["estado"].str.contains("Incumplido", na=False)]) if "estado" in df.columns else 0
 
-    ws.merge_cells(f"N{total_row}:P{total_row}")
-    cr = ws.cell(row=total_row, column=14,
-                 value=f"✅ {completados}  |  ❌ {anulados}  |  ⚠️ {incumplidos}")
-    cr.font = ft_total; cr.fill = fill_total; cr.alignment = centro
+    total_row = len(df) + 3
+    ws.merge_cells(f"A{total_row}:{get_column_letter(len(columnas))}{total_row}")
+    ct = ws.cell(row=total_row, column=1, value=f"TOTAL VIAJES: {len(df)}   |   ✅ {completados}  ❌ {anulados}  ⚠️ {incumplidos}")
+    ct.font = ft_total; ct.fill = fill_total; ct.alignment = centro
 
     # ==================== HOJA RESUMEN ====================
     ws2 = wb.create_sheet("Resumen")
