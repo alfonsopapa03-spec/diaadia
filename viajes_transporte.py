@@ -389,7 +389,8 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     columnas = ["ID","FECHA","PLACA","CONDUCTOR","CLIENTE","ORIGEN","DESTINO",
                 "CITA CARGUE","SALIDA CARGUE","LLEGADA DESC.","SALIDA DESC.",
-                "CONTENEDOR","CARGA","IMPORTACION/BL","MANIFIESTO","ESTADO","OBSERVACION"]
+                "CONTENEDOR","CARGA","IMPORTACION/BL","MANIFIESTO","ESTADO","OBSERVACION",
+                "LAT. ORIGEN","LON. ORIGEN","LAT. DESTINO","LON. DESTINO"]
 
     col_map = {
         "id":"ID","fecha":"FECHA","placa":"PLACA","conductor":"CONDUCTOR",
@@ -397,20 +398,36 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         "hora_cita_cargue":"CITA CARGUE","hora_salida_cargue":"SALIDA CARGUE",
         "hora_llegada_descargue":"LLEGADA DESC.","hora_salida_descargue":"SALIDA DESC.",
         "contenedor":"CONTENEDOR","carga":"CARGA","numero_importacion":"IMPORTACION/BL",
-        "manifiesto":"MANIFIESTO","estado":"ESTADO","observacion":"OBSERVACION"
+        "manifiesto":"MANIFIESTO","estado":"ESTADO","observacion":"OBSERVACION",
+        "lat_origen":"LAT. ORIGEN","lon_origen":"LON. ORIGEN",
+        "lat_destino":"LAT. DESTINO","lon_destino":"LON. DESTINO"
     }
 
     now_col = datetime.now(pytz.timezone("America/Bogota"))
 
-    # Fila 1: título (sin merge)
-    ws.cell(1, 1, f"Control de Viajes  |  Generado: {now_col.strftime('%d/%m/%Y %H:%M')} (COL)  |  Total: {len(df)} viajes")
-    ws.cell(1, 1).font = ft_titulo
-    ws.cell(1, 1).fill = PatternFill("solid", start_color="0F2027")
-    ws.cell(1, 1).alignment = izq
-    ws.row_dimensions[1].height = 24
-    # Rellenar resto de fila 1 con mismo color
-    for ci in range(2, len(columnas)+1):
-        ws.cell(1, ci).fill = PatternFill("solid", start_color="0F2027")
+    # Fila 1: título distribuido en celdas
+    ft_sub = Font(name="Calibri", bold=False, size=10, color="AAAAAA")
+    n_cols = len(columnas)
+    # Celda A1: nombre del reporte
+    c_t1 = ws.cell(1, 1, "CONTROL DE VIAJES DE TRANSPORTE")
+    c_t1.font = ft_titulo; c_t1.fill = PatternFill("solid", start_color="0F2027")
+    c_t1.alignment = izq
+    # Celda central: fecha generación
+    mid = n_cols // 2
+    c_t2 = ws.cell(1, mid, f"Generado: {now_col.strftime('%d/%m/%Y %H:%M')} (COL)")
+    c_t2.font = Font(name="Calibri", bold=False, size=10, color="CCCCCC")
+    c_t2.fill = PatternFill("solid", start_color="0F2027")
+    c_t2.alignment = centro
+    # Última celda: total
+    c_t3 = ws.cell(1, n_cols, f"Total: {len(df)} viajes")
+    c_t3.font = Font(name="Calibri", bold=True, size=10, color="00FF99")
+    c_t3.fill = PatternFill("solid", start_color="0F2027")
+    c_t3.alignment = Alignment(horizontal="right", vertical="center")
+    # Rellenar resto con mismo color
+    for ci in range(2, n_cols+1):
+        if ci not in (mid, n_cols):
+            ws.cell(1, ci).fill = PatternFill("solid", start_color="0F2027")
+    ws.row_dimensions[1].height = 28
 
     # Fila 2: headers
     for ci, col in enumerate(columnas, start=1):
@@ -439,19 +456,28 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             if fill_row: c.fill = fill_row
         ws.row_dimensions[ri].height = 18
 
+    en_curso_tot = len(df[df["estado"].str.contains("En Curso", na=False)]) if "estado" in df.columns else 0
     # Fila total (sin merge)
     total_row = len(df) + 3
-    ws.cell(total_row, 1, f"TOTAL: {len(df)} viajes  |  Completados: {completados}  |  Anulados: {anulados}  |  Incumplidos: {incumplidos}")
-    ws.cell(total_row, 1).font = ft_total
-    ws.cell(total_row, 1).fill = fill_total
-    ws.cell(total_row, 1).alignment = izq
-    ws.cell(total_row, 1).border = borde
-    for ci in range(2, len(columnas)+1):
+    totales = [
+        (1, f"TOTAL: {len(df)} viajes"),
+        (4, f"Completados: {completados}"),
+        (7, f"Anulados: {anulados}"),
+        (10, f"Incumplidos: {incumplidos}"),
+        (13, f"En Curso: {en_curso_tot}"),
+        (16, f"% Cumpl: {round(completados/len(df)*100,1)}%" if len(df)>0 else ""),
+    ]
+    for ci in range(1, len(columnas)+1):
         ws.cell(total_row, ci).fill = fill_total
         ws.cell(total_row, ci).border = borde
+    for col_pos, texto in totales:
+        if col_pos <= len(columnas):
+            c = ws.cell(total_row, col_pos, texto)
+            c.font = ft_total; c.fill = fill_total
+            c.alignment = izq; c.border = borde
 
     # Anchos de columna
-    anchos = [6,11,9,28,22,22,18,12,12,12,12,16,14,16,12,14,28]
+    anchos = [6,11,9,28,22,22,18,12,12,12,12,16,14,16,12,14,28,14,14,14,14]
     for ci, w in enumerate(anchos, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
     ws.freeze_panes = "A3"
@@ -521,11 +547,11 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     # ==================== HOJA CONDUCTORES ====================
     ws3 = wb.create_sheet("Conductores")
     ws3.cell(1,1,"RANKING DE CONDUCTORES")
-    ws3.cell(1,1).font = ft_titulo
+    ws3.cell(1,1).font = Font(name="Calibri",bold=True,size=13,color="FFFFFF")
     ws3.cell(1,1).fill = PatternFill("solid", start_color="0F2027")
-    ws3.cell(1,1).alignment = izq
+    ws3.cell(1,1).alignment = Alignment(horizontal="center",vertical="center")
     for ci in range(2,8): ws3.cell(1,ci).fill = PatternFill("solid", start_color="0F2027")
-    ws3.row_dimensions[1].height = 26
+    ws3.row_dimensions[1].height = 30
 
     hdrs3 = ["CONDUCTOR","TOTAL","COMPLET.","ANULADOS","INCUMPL.","EN CURSO","% CUMPL."]
     for ci,h in enumerate(hdrs3, start=1):
@@ -557,11 +583,11 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     # ==================== HOJA TIEMPOS ====================
     ws4 = wb.create_sheet("Tiempos")
     ws4.cell(1,1,"ANALISIS DE TIEMPOS POR VIAJE")
-    ws4.cell(1,1).font = ft_titulo
+    ws4.cell(1,1).font = Font(name="Calibri",bold=True,size=13,color="FFFFFF")
     ws4.cell(1,1).fill = PatternFill("solid", start_color="0F2027")
-    ws4.cell(1,1).alignment = izq
+    ws4.cell(1,1).alignment = Alignment(horizontal="center",vertical="center")
     for ci in range(2,9): ws4.cell(1,ci).fill = PatternFill("solid", start_color="0F2027")
-    ws4.row_dimensions[1].height = 26
+    ws4.row_dimensions[1].height = 30
 
     hdrs4=["FECHA","PLACA","CONDUCTOR","CLIENTE","ESPERA CARGUE","TRANSITO","DESCARGUE","TOTAL"]
     for ci,h in enumerate(hdrs4, start=1):
