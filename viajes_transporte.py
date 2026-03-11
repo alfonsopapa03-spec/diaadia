@@ -365,325 +365,272 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     ws = wb.active
     ws.title = "Viajes"
 
-    ft_titulo  = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
-    ft_header  = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
-    ft_normal  = Font(name="Calibri", size=9)
-    ft_total   = Font(name="Calibri", bold=True, size=10)
-    ft_anulado = Font(name="Calibri", size=9, color="C0392B")
-    ft_incump  = Font(name="Calibri", size=9, color="D35400")
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
 
-    fill_titulo  = PatternFill("solid", start_color="0F2027")
-    fill_header  = PatternFill("solid", start_color="203A43")
-    fill_alt     = PatternFill("solid", start_color="EBF5FB")
-    fill_total   = PatternFill("solid", start_color="D5DBDB")
-    fill_anulado = PatternFill("solid", start_color="FADBD8")
-    fill_incump  = PatternFill("solid", start_color="FDEBD0")
-
-    borde  = Border(left=Side(style="thin"), right=Side(style="thin"),
-                    top=Side(style="thin"),  bottom=Side(style="thin"))
+    # Estilos
+    lado   = Side(style="thin", color="CCCCCC")
+    borde  = Border(left=lado, right=lado, top=lado, bottom=lado)
     centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
     izq    = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
-    ws.merge_cells("A1:P1")
+    COLOR_HEADER = "1A3A4A"
+    COLOR_COMP   = "D5F5E3"
+    COLOR_ANUL   = "FADBD8"
+    COLOR_INCU   = "FDEBD0"
+    COLOR_CURS   = "D6EAF8"
+
+    ft_titulo  = Font(name="Calibri", bold=True,  size=12, color="FFFFFF")
+    ft_header  = Font(name="Calibri", bold=True,  size=10, color="FFFFFF")
+    ft_normal  = Font(name="Calibri", bold=False, size=10)
+    ft_total   = Font(name="Calibri", bold=True,  size=10)
+    fill_hdr   = PatternFill("solid", start_color=COLOR_HEADER)
+    fill_total = PatternFill("solid", start_color="203A43")
+
+    columnas = ["ID","FECHA","PLACA","CONDUCTOR","CLIENTE","ORIGEN","DESTINO",
+                "CITA CARGUE","SALIDA CARGUE","LLEGADA DESC.","SALIDA DESC.",
+                "CONTENEDOR","CARGA","IMPORTACION/BL","MANIFIESTO","ESTADO","OBSERVACION"]
+
+    col_map = {
+        "id":"ID","fecha":"FECHA","placa":"PLACA","conductor":"CONDUCTOR",
+        "cliente":"CLIENTE","origen":"ORIGEN","destino":"DESTINO",
+        "hora_cita_cargue":"CITA CARGUE","hora_salida_cargue":"SALIDA CARGUE",
+        "hora_llegada_descargue":"LLEGADA DESC.","hora_salida_descargue":"SALIDA DESC.",
+        "contenedor":"CONTENEDOR","carga":"CARGA","numero_importacion":"IMPORTACION/BL",
+        "manifiesto":"MANIFIESTO","estado":"ESTADO","observacion":"OBSERVACION"
+    }
+
     now_col = datetime.now(pytz.timezone("America/Bogota"))
-    ws["A1"] = f"🚚 {titulo}   |   Generado: {now_col.strftime('%d/%m/%Y %H:%M')} (COL)   |   Total: {len(df)} viajes"
-    ws["A1"].font = ft_titulo
-    ws["A1"].fill = fill_titulo
-    ws["A1"].alignment = centro
-    ws.row_dimensions[1].height = 30
 
-    columnas = [
-        ("fecha","FECHA",12), ("placa","PLACA",12), ("conductor","CONDUCTOR",26),
-        ("cliente","CLIENTE",22), ("origen","ORIGEN",20), ("destino","DESTINO",20),
-        ("hora_cita_cargue","H.CITA CARGUE",14), ("hora_salida_cargue","H.SALIDA CARGUE",14),
-        ("hora_llegada_descargue","H.LLEGADA DESC.",14), ("hora_salida_descargue","H.SALIDA DESC.",14),
-        ("contenedor","CONTENEDOR",18), ("carga","CARGA",14),
-        ("numero_importacion_bl","IMP / BL",18), ("manifiesto","MANIFIESTO",12),
-        ("observacion","OBSERVACIÓN",28), ("estado","ESTADO",14),
-    ]
-    # Columnas extra de coordenadas (no vienen del df, se calculan)
-    cols_coord = ["LAT. ORIGEN","LON. ORIGEN","LAT. DESTINO","LON. DESTINO"]
-    total_cols = len(columnas) + len(cols_coord)
+    # Fila 1: título (sin merge)
+    ws.cell(1, 1, f"Control de Viajes  |  Generado: {now_col.strftime('%d/%m/%Y %H:%M')} (COL)  |  Total: {len(df)} viajes")
+    ws.cell(1, 1).font = ft_titulo
+    ws.cell(1, 1).fill = PatternFill("solid", start_color="0F2027")
+    ws.cell(1, 1).alignment = izq
+    ws.row_dimensions[1].height = 24
+    # Rellenar resto de fila 1 con mismo color
+    for ci in range(2, len(columnas)+1):
+        ws.cell(1, ci).fill = PatternFill("solid", start_color="0F2027")
 
-    ws.merge_cells(f"A1:{get_column_letter(total_cols)}1")
+    # Fila 2: headers
+    for ci, col in enumerate(columnas, start=1):
+        c = ws.cell(2, ci, col)
+        c.font = ft_header; c.fill = fill_hdr
+        c.alignment = centro; c.border = borde
+    ws.row_dimensions[2].height = 22
 
-    for idx, (key, nombre, ancho) in enumerate(columnas, start=1):
-        cell = ws.cell(row=2, column=idx, value=nombre)
-        cell.font = ft_header; cell.fill = fill_header
-        cell.alignment = centro; cell.border = borde
-        ws.column_dimensions[get_column_letter(idx)].width = ancho
-    # Headers coordenadas
-    for i, nombre in enumerate(cols_coord, start=len(columnas)+1):
-        cell = ws.cell(row=2, column=i, value=nombre)
-        cell.font = ft_header
-        cell.fill = PatternFill("solid", start_color="1A5276")
-        cell.alignment = centro; cell.border = borde
-        ws.column_dimensions[get_column_letter(i)].width = 14
-    ws.row_dimensions[2].height = 28
+    completados = anulados = incumplidos = 0
 
-    for row_idx, (_, fila) in enumerate(df.iterrows(), start=3):
-        estado_val = str(fila.get("estado", ""))
-        es_an = "Anulado" in estado_val
-        es_in = "Incumplido" in estado_val
-        fill_f = fill_anulado if es_an else (fill_incump if es_in else (fill_alt if row_idx % 2 == 0 else None))
+    # Filas de datos
+    for ri, (_, row) in enumerate(df.iterrows(), start=3):
+        estado_val = str(row.get("estado",""))
+        if   "Completado"  in estado_val: fill_row = PatternFill("solid", start_color=COLOR_COMP); completados  += 1
+        elif "Anulado"     in estado_val: fill_row = PatternFill("solid", start_color=COLOR_ANUL); anulados     += 1
+        elif "Incumplido"  in estado_val: fill_row = PatternFill("solid", start_color=COLOR_INCU); incumplidos  += 1
+        elif "En Curso"    in estado_val: fill_row = PatternFill("solid", start_color=COLOR_CURS)
+        else:                              fill_row = None
 
-        for col_idx, (key, _, _) in enumerate(columnas, start=1):
-            val = fila.get(key, "")
-            if not isinstance(val, str) and pd.isna(val): val = ""
-            if key.startswith("hora_") and val:
-                try: val = str(val)[:5]
-                except: val = ""
-            cell = ws.cell(row=row_idx, column=col_idx, value=str(val) if val != "" else "")
-            cell.border = borde
-            cell.alignment = centro if key in ("fecha","placa","estado") or key.startswith("hora_") else izq
-            cell.font = ft_anulado if es_an else (ft_incump if es_in else ft_normal)
-            if fill_f: cell.fill = fill_f
+        for ci, col_name in enumerate(col_map.keys(), start=1):
+            val = row.get(col_name, "")
+            val = "" if val is None or (isinstance(val, float) and pd.isna(val)) else val
+            c = ws.cell(ri, ci, str(val) if not isinstance(val, (int, float)) else val)
+            c.font = ft_normal; c.border = borde
+            c.alignment = izq if ci in (4,5,6,7,17) else centro
+            if fill_row: c.fill = fill_row
+        ws.row_dimensions[ri].height = 18
 
-        # Coordenadas origen y destino
-        origen_v  = str(fila.get("origen",  "") or "").strip().upper()
-        destino_v = str(fila.get("destino", "") or "").strip().upper()
-        lat_o, lon_o = COORDENADAS.get(origen_v,  (None, None))  if origen_v  in COORDENADAS else (None, None)
-        lat_d, lon_d = COORDENADAS.get(destino_v, (None, None)) if destino_v in COORDENADAS else (None, None)
-        fill_coord = PatternFill("solid", start_color="D6EAF8") if fill_f is None and row_idx % 2 == 0 else fill_f
-        for ci, val in enumerate([lat_o, lon_o, lat_d, lon_d], start=len(columnas)+1):
-            cell = ws.cell(row=row_idx, column=ci, value=val if val is not None else "")
-            cell.font = ft_normal; cell.border = borde; cell.alignment = centro
-            if fill_coord: cell.fill = fill_coord
-        ws.row_dimensions[row_idx].height = 18
-
-    completados = len(df[df["estado"].str.contains("Completado", na=False)]) if "estado" in df.columns else 0
-    anulados    = len(df[df["estado"].str.contains("Anulado",    na=False)]) if "estado" in df.columns else 0
-    incumplidos = len(df[df["estado"].str.contains("Incumplido", na=False)]) if "estado" in df.columns else 0
-
+    # Fila total (sin merge)
     total_row = len(df) + 3
-    try:
-        ws.merge_cells(f"A{total_row}:{get_column_letter(len(columnas))}{total_row}")
-    except Exception:
-        pass
-    ct = ws.cell(row=total_row, column=1, value=f"TOTAL VIAJES: {len(df)}   |   ✅ {completados}  ❌ {anulados}  ⚠️ {incumplidos}")
-    ct.font = ft_total; ct.fill = fill_total; ct.alignment = centro
+    ws.cell(total_row, 1, f"TOTAL: {len(df)} viajes  |  Completados: {completados}  |  Anulados: {anulados}  |  Incumplidos: {incumplidos}")
+    ws.cell(total_row, 1).font = ft_total
+    ws.cell(total_row, 1).fill = fill_total
+    ws.cell(total_row, 1).alignment = izq
+    ws.cell(total_row, 1).border = borde
+    for ci in range(2, len(columnas)+1):
+        ws.cell(total_row, ci).fill = fill_total
+        ws.cell(total_row, ci).border = borde
+
+    # Anchos de columna
+    anchos = [6,11,9,28,22,22,18,12,12,12,12,16,14,16,12,14,28]
+    for ci, w in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+    ws.freeze_panes = "A3"
 
     # ==================== HOJA RESUMEN ====================
     ws2 = wb.create_sheet("Resumen")
 
-    def hdr(ws, fila, col1, col2, texto):
-        # Sin merge_cells para evitar errores de Excel
-        c = ws.cell(fila, col1, texto)
+    def hdr_simple(wsh, fila, col, texto):
+        c = wsh.cell(fila, col, texto)
         c.font = ft_header
-        c.fill = PatternFill("solid", start_color="203A43")
-        c.alignment = centro
-        c.border = borde
-        ws.row_dimensions[fila].height = 20
-        # Rellenar celdas adyacentes del header con mismo color
-        for col in range(col1+1, col2+1):
-            cx = ws.cell(fila, col, "")
-            cx.fill = PatternFill("solid", start_color="203A43")
-            cx.border = borde
+        c.fill = PatternFill("solid", start_color=COLOR_HEADER)
+        c.alignment = centro; c.border = borde
+        wsh.row_dimensions[fila].height = 20
 
-    # Título
-    ws2["A1"] = "Resumen General de Operaciones"
-    ws2["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
-    ws2["A1"].fill = PatternFill("solid", start_color="0F2027")
-    ws2["A1"].alignment = centro
+    ws2.cell(1, 1, "RESUMEN GENERAL DE OPERACIONES")
+    ws2.cell(1, 1).font = ft_titulo
+    ws2.cell(1, 1).fill = PatternFill("solid", start_color="0F2027")
+    ws2.cell(1, 1).alignment = izq
+    for ci in range(2, 9):
+        ws2.cell(1, ci).fill = PatternFill("solid", start_color="0F2027")
     ws2.row_dimensions[1].height = 26
 
-    # --- KPIs generales (col A:B) ---
-    hdr(ws2, 2, 1, 2, "RESUMEN GENERAL")
+    # KPIs
     en_curso = len(df[df["estado"].str.contains("En Curso", na=False)]) if "estado" in df.columns else 0
-    kpis = [
-        ("Total Viajes", len(df)),
-        ("Completados", completados),
-        ("Anulados", anulados),
-        ("Incumplidos", incumplidos),
-        ("En Curso", en_curso),
-        ("% Cumplimiento", f"{round(completados/len(df)*100,1)}%" if len(df) > 0 else "0%"),
-    ]
-    for i, (m, v) in enumerate(kpis, start=3):
-        c1 = ws2.cell(i, 1, m); c2 = ws2.cell(i, 2, v)
-        c1.font = ft_normal; c2.font = ft_total
-        c1.border = borde; c2.border = borde
-        c1.alignment = izq; c2.alignment = centro
-        if i % 2 == 0:
-            c1.fill = PatternFill("solid", start_color="EBF5FB")
-            c2.fill = PatternFill("solid", start_color="EBF5FB")
+    hdr_simple(ws2, 2, 1, "METRICA"); hdr_simple(ws2, 2, 2, "VALOR")
+    kpis = [("Total Viajes", len(df)),("Completados", completados),("Anulados", anulados),
+            ("Incumplidos", incumplidos),("En Curso", en_curso),
+            ("% Cumplimiento", f"{round(completados/len(df)*100,1)}%" if len(df)>0 else "0%")]
+    for i,(m,v) in enumerate(kpis, start=3):
+        c1=ws2.cell(i,1,m); c2=ws2.cell(i,2,v)
+        c1.font=ft_normal; c2.font=ft_total
+        c1.border=borde; c2.border=borde
+        c1.alignment=izq; c2.alignment=centro
+        if i%2==0:
+            c1.fill=PatternFill("solid",start_color="EBF5FB")
+            c2.fill=PatternFill("solid",start_color="EBF5FB")
 
-    # --- Por cliente (col D:E) ---
+    # Por cliente
     if "cliente" in df.columns and df["cliente"].notna().any():
-        hdr(ws2, 2, 4, 5, "VIAJES POR CLIENTE")
+        hdr_simple(ws2, 2, 4, "CLIENTE"); hdr_simple(ws2, 2, 5, "VIAJES")
         por_cli = df.groupby("cliente").size().reset_index(name="v").sort_values("v", ascending=False)
         for i, row in enumerate(por_cli.itertuples(), start=3):
-            c1 = ws2.cell(i, 4, row.cliente); c2 = ws2.cell(i, 5, int(row.v))
-            c1.font = ft_normal; c2.font = ft_total
-            c1.border = borde; c2.border = borde
-            c1.alignment = izq; c2.alignment = centro
-            if i % 2 == 0:
-                c1.fill = PatternFill("solid", start_color="EBF5FB")
-                c2.fill = PatternFill("solid", start_color="EBF5FB")
+            c1=ws2.cell(i,4,row.cliente); c2=ws2.cell(i,5,int(row.v))
+            c1.font=ft_normal; c2.font=ft_total
+            c1.border=borde; c2.border=borde
+            c1.alignment=izq; c2.alignment=centro
+            if i%2==0:
+                c1.fill=PatternFill("solid",start_color="EBF5FB")
+                c2.fill=PatternFill("solid",start_color="EBF5FB")
 
-    # --- Por placa (col G:H) ---
+    # Por placa
     if "placa" in df.columns:
-        hdr(ws2, 2, 7, 8, "VIAJES POR PLACA")
+        hdr_simple(ws2, 2, 7, "PLACA"); hdr_simple(ws2, 2, 8, "VIAJES")
         por_placa = df.groupby("placa").size().reset_index(name="v").sort_values("v", ascending=False)
         for i, row in enumerate(por_placa.itertuples(), start=3):
-            c1 = ws2.cell(i, 7, row.placa); c2 = ws2.cell(i, 8, int(row.v))
-            c1.font = ft_normal; c2.font = ft_total
-            c1.border = borde; c2.border = borde
-            c1.alignment = izq; c2.alignment = centro
-            if i % 2 == 0:
-                c1.fill = PatternFill("solid", start_color="EBF5FB")
-                c2.fill = PatternFill("solid", start_color="EBF5FB")
+            c1=ws2.cell(i,7,row.placa); c2=ws2.cell(i,8,int(row.v))
+            c1.font=ft_normal; c2.font=ft_total
+            c1.border=borde; c2.border=borde
+            c1.alignment=izq; c2.alignment=centro
+            if i%2==0:
+                c1.fill=PatternFill("solid",start_color="EBF5FB")
+                c2.fill=PatternFill("solid",start_color="EBF5FB")
 
-    for col_l, w in zip(["A","B","C","D","E","F","G","H"], [22,10,3,24,8,3,12,8]):
+    for col_l,w in zip(["A","B","C","D","E","F","G","H"],[22,10,3,26,8,3,12,8]):
         ws2.column_dimensions[col_l].width = w
 
     # ==================== HOJA CONDUCTORES ====================
     ws3 = wb.create_sheet("Conductores")
-    ws3["A1"] = "Ranking de Conductores"
-    ws3["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
-    ws3["A1"].fill = PatternFill("solid", start_color="0F2027")
-    ws3["A1"].alignment = centro
+    ws3.cell(1,1,"RANKING DE CONDUCTORES")
+    ws3.cell(1,1).font = ft_titulo
+    ws3.cell(1,1).fill = PatternFill("solid", start_color="0F2027")
+    ws3.cell(1,1).alignment = izq
+    for ci in range(2,8): ws3.cell(1,ci).fill = PatternFill("solid", start_color="0F2027")
     ws3.row_dimensions[1].height = 26
 
     hdrs3 = ["CONDUCTOR","TOTAL","COMPLET.","ANULADOS","INCUMPL.","EN CURSO","% CUMPL."]
-    for ci, h in enumerate(hdrs3, start=1):
-        c = ws3.cell(2, ci, h)
-        c.font = ft_header
-        c.fill = PatternFill("solid", start_color="203A43")
-        c.alignment = centro
-        c.border = borde
+    for ci,h in enumerate(hdrs3, start=1):
+        c=ws3.cell(2,ci,h); c.font=ft_header
+        c.fill=fill_hdr; c.alignment=centro; c.border=borde
     ws3.row_dimensions[2].height = 20
 
     if "conductor" in df.columns:
-        df_cond = df.groupby("conductor").agg(
+        df_cond = df[df["conductor"].notna() & (df["conductor"].str.strip()!="")].groupby("conductor").agg(
             total=("conductor","count"),
-            comp=("estado", lambda x: x.str.contains("Completado", na=False).sum()),
-            anul=("estado", lambda x: x.str.contains("Anulado",    na=False).sum()),
-            incu=("estado", lambda x: x.str.contains("Incumplido", na=False).sum()),
-            curs=("estado", lambda x: x.str.contains("En Curso",   na=False).sum()),
+            comp=("estado", lambda x: x.str.contains("Completado",na=False).sum()),
+            anul=("estado", lambda x: x.str.contains("Anulado",na=False).sum()),
+            incu=("estado", lambda x: x.str.contains("Incumplido",na=False).sum()),
+            curs=("estado", lambda x: x.str.contains("En Curso",na=False).sum()),
         ).reset_index().sort_values("total", ascending=False)
+        for i,row in enumerate(df_cond.itertuples(), start=3):
+            pct = f"{round(row.comp/row.total*100,1)}%" if row.total>0 else "0%"
+            vals=[row.conductor,row.total,row.comp,row.anul,row.incu,row.curs,pct]
+            fill_c=PatternFill("solid",start_color="EBF5FB") if i%2==0 else None
+            for ci,v in enumerate(vals, start=1):
+                c=ws3.cell(i,ci,v); c.font=ft_normal; c.border=borde
+                c.alignment=izq if ci==1 else centro
+                if fill_c: c.fill=fill_c
 
-        for i, row in enumerate(df_cond.itertuples(), start=3):
-            pct = f"{round(row.comp/row.total*100,1)}%" if row.total > 0 else "0%"
-            vals = [row.conductor, row.total, row.comp, row.anul, row.incu, row.curs, pct]
-            fill_c = PatternFill("solid", start_color="EBF5FB") if i % 2 == 0 else None
-            for ci, v in enumerate(vals, start=1):
-                c = ws3.cell(i, ci, v)
-                c.font = ft_normal; c.border = borde
-                c.alignment = izq if ci == 1 else centro
-                if fill_c: c.fill = fill_c
-
-    for col_l, w in zip(["A","B","C","D","E","F","G"], [32,8,10,10,10,10,10]):
+    for col_l,w in zip(["A","B","C","D","E","F","G"],[32,8,10,10,10,10,10]):
         ws3.column_dimensions[col_l].width = w
     ws3.freeze_panes = "A3"
 
     # ==================== HOJA TIEMPOS ====================
     ws4 = wb.create_sheet("Tiempos")
-    ws4["A1"] = "Analisis de Tiempos por Viaje"
-    ws4["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
-    ws4["A1"].fill = PatternFill("solid", start_color="0F2027")
-    ws4["A1"].alignment = centro
+    ws4.cell(1,1,"ANALISIS DE TIEMPOS POR VIAJE")
+    ws4.cell(1,1).font = ft_titulo
+    ws4.cell(1,1).fill = PatternFill("solid", start_color="0F2027")
+    ws4.cell(1,1).alignment = izq
+    for ci in range(2,9): ws4.cell(1,ci).fill = PatternFill("solid", start_color="0F2027")
     ws4.row_dimensions[1].height = 26
 
-    hdrs4 = ["FECHA","PLACA","CONDUCTOR","CLIENTE","ESPERA CARGUE","TRANSITO","DESCARGUE","TOTAL OPERACION"]
-    for ci, h in enumerate(hdrs4, start=1):
-        c = ws4.cell(2, ci, h)
-        c.font = ft_header
-        c.fill = PatternFill("solid", start_color="203A43")
-        c.alignment = centro
-        c.border = borde
+    hdrs4=["FECHA","PLACA","CONDUCTOR","CLIENTE","ESPERA CARGUE","TRANSITO","DESCARGUE","TOTAL"]
+    for ci,h in enumerate(hdrs4, start=1):
+        c=ws4.cell(2,ci,h); c.font=ft_header
+        c.fill=fill_hdr; c.alignment=centro; c.border=borde
     ws4.row_dimensions[2].height = 20
 
-    tot_espera = tot_transito = tot_desc = tot_total = 0
-    count_e = count_t = count_d = count_tot = 0
+    tot_e=tot_t=tot_d=tot_tot=count_e=count_t=count_d=count_tot=0
+    for i,(_, row) in enumerate(df.iterrows(), start=3):
+        t_e = calcular_duracion(row.get("hora_cita_cargue"),       row.get("hora_salida_cargue"))
+        t_t = calcular_duracion(row.get("hora_salida_cargue"),     row.get("hora_llegada_descargue"))
+        t_d = calcular_duracion(row.get("hora_llegada_descargue"), row.get("hora_salida_descargue"))
+        t_tot = (t_e+t_t+t_d) if all(x is not None for x in [t_e,t_t,t_d]) else None
+        if t_e   is not None: tot_e   += t_e;   count_e   += 1
+        if t_t   is not None: tot_t   += t_t;   count_t   += 1
+        if t_d   is not None: tot_d   += t_d;   count_d   += 1
+        if t_tot is not None: tot_tot += t_tot; count_tot += 1
+        vals=[str(row.get("fecha","")),str(row.get("placa","")),str(row.get("conductor","")),
+              str(row.get("cliente","")),mins_a_str(t_e),mins_a_str(t_t),mins_a_str(t_d),mins_a_str(t_tot)]
+        fill_t=PatternFill("solid",start_color="EBF5FB") if i%2==0 else None
+        for ci,v in enumerate(vals, start=1):
+            c=ws4.cell(i,ci,v); c.font=ft_normal; c.border=borde
+            c.alignment=izq if ci<=4 else centro
+            if fill_t: c.fill=fill_t
 
-    for i, (_, row) in enumerate(df.iterrows(), start=3):
-        t_espera  = calcular_duracion(row.get("hora_cita_cargue"),       row.get("hora_salida_cargue"))
-        t_transit = calcular_duracion(row.get("hora_salida_cargue"),     row.get("hora_llegada_descargue"))
-        t_desc    = calcular_duracion(row.get("hora_llegada_descargue"), row.get("hora_salida_descargue"))
-        t_total   = None
-        if t_espera is not None and t_transit is not None and t_desc is not None:
-            t_total = t_espera + t_transit + t_desc
+    fp=len(df)+3
+    promedios=["PROMEDIO","","","",
+               mins_a_str(tot_e/count_e if count_e>0 else None),
+               mins_a_str(tot_t/count_t if count_t>0 else None),
+               mins_a_str(tot_d/count_d if count_d>0 else None),
+               mins_a_str(tot_tot/count_tot if count_tot>0 else None)]
+    for ci,v in enumerate(promedios, start=1):
+        c=ws4.cell(fp,ci,v); c.font=ft_total
+        c.fill=fill_total; c.alignment=centro; c.border=borde
 
-        if t_espera  is not None: tot_espera  += t_espera;  count_e   += 1
-        if t_transit is not None: tot_transito += t_transit; count_t   += 1
-        if t_desc    is not None: tot_desc    += t_desc;    count_d   += 1
-        if t_total   is not None: tot_total   += t_total;   count_tot += 1
-
-        vals = [
-            str(row.get("fecha","")),
-            str(row.get("placa","")),
-            str(row.get("conductor","")),
-            str(row.get("cliente","")),
-            mins_a_str(t_espera),
-            mins_a_str(t_transit),
-            mins_a_str(t_desc),
-            mins_a_str(t_total),
-        ]
-        fill_t = PatternFill("solid", start_color="EBF5FB") if i % 2 == 0 else None
-        for ci, v in enumerate(vals, start=1):
-            c = ws4.cell(i, ci, v)
-            c.font = ft_normal; c.border = borde
-            c.alignment = izq if ci in (1,2,3,4) else centro
-            if fill_t: c.fill = fill_t
-
-    # Fila promedios
-    fila_prom = len(df) + 3
-    cp = ws4.cell(fila_prom, 1, "PROMEDIO")
-    cp.font = ft_total; cp.fill = fill_total; cp.alignment = centro; cp.border = borde
-    for ci, (tot, cnt) in enumerate([(tot_espera,count_e),(tot_transito,count_t),(tot_desc,count_d),(tot_total,count_tot)], start=5):
-        c = ws4.cell(fila_prom, ci, mins_a_str(tot/cnt if cnt > 0 else None))
-        c.font = ft_total; c.fill = fill_total; c.alignment = centro; c.border = borde
-
-    for col_l, w in zip(["A","B","C","D","E","F","G","H"], [12,10,28,20,14,14,14,16]):
+    for col_l,w in zip(["A","B","C","D","E","F","G","H"],[12,10,28,22,14,14,14,14]):
         ws4.column_dimensions[col_l].width = w
     ws4.freeze_panes = "A3"
 
-    # ==================== HOJA GRAFICA ESTADOS ====================
+    # ==================== HOJA GRAFICA ====================
     try:
         from openpyxl.chart import PieChart, Reference
         from openpyxl.chart.series import DataPoint
-
         ws5 = wb.create_sheet("Grafica")
-        ws5["A1"] = "Estado"; ws5["B1"] = "Cantidad"
-        ws5["A1"].font = ft_header; ws5["B1"].font = ft_header
-        ws5["A1"].fill = PatternFill("solid", start_color="203A43")
-        ws5["B1"].fill = PatternFill("solid", start_color="203A43")
-
-        estados_graf = ["Completado","Anulado","Incumplido","En Curso"]
-        for i, est in enumerate(estados_graf, start=2):
-            cnt = len(df[df["estado"].str.contains(est, na=False)]) if "estado" in df.columns else 0
-            ws5.cell(i, 1, est).border = borde
-            ws5.cell(i, 2, cnt).border = borde
-
-        pie = PieChart()
-        pie.title = "Distribucion de Viajes por Estado"
-        pie.style = 10
-        labels = Reference(ws5, min_col=1, min_row=2, max_row=5)
-        data   = Reference(ws5, min_col=2, min_row=1, max_row=5)
-        pie.add_data(data, titles_from_data=True)
-        pie.set_categories(labels)
-        pie.width = 15; pie.height = 12
-
-        # Colores: verde, rojo, naranja, azul
-        colores = ["2ECC71","E74C3C","F39C12","3498DB"]
-        for idx, color in enumerate(colores):
-            pt = DataPoint(idx=idx)
-            pt.graphicalProperties.solidFill = color
+        ws5.cell(1,1,"Estado"); ws5.cell(1,2,"Cantidad")
+        ws5.cell(1,1).font=ft_header; ws5.cell(1,2).font=ft_header
+        ws5.cell(1,1).fill=fill_hdr; ws5.cell(1,2).fill=fill_hdr
+        estados_g=["Completado","Anulado","Incumplido","En Curso"]
+        for i,est in enumerate(estados_g, start=2):
+            cnt=len(df[df["estado"].str.contains(est,na=False)]) if "estado" in df.columns else 0
+            ws5.cell(i,1,est).border=borde; ws5.cell(i,2,cnt).border=borde
+        pie=PieChart(); pie.title="Distribucion por Estado"; pie.style=10
+        labels=Reference(ws5,min_col=1,min_row=2,max_row=5)
+        data=Reference(ws5,min_col=2,min_row=1,max_row=5)
+        pie.add_data(data,titles_from_data=True); pie.set_categories(labels)
+        pie.width=15; pie.height=12
+        colores=["2ECC71","E74C3C","F39C12","3498DB"]
+        for idx,color in enumerate(colores):
+            pt=DataPoint(idx=idx); pt.graphicalProperties.solidFill=color
             pie.series[0].dPt.append(pt)
-
-        ws5.add_chart(pie, "D1")
-        for col_l, w in zip(["A","B"], [16, 10]):
-            ws5.column_dimensions[col_l].width = w
+        ws5.add_chart(pie,"D1")
+        ws5.column_dimensions["A"].width=16; ws5.column_dimensions["B"].width=10
     except Exception:
-        pass  # Si falla la grafica no rompe el archivo
+        pass
 
-    ws.freeze_panes = "A3"
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
 
-
-# ==================== HELPERS ====================
 def hora_a_time(val):
     if val is None or (isinstance(val, float) and pd.isna(val)): return None
     if isinstance(val, time): return val
