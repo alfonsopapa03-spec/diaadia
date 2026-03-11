@@ -456,7 +456,10 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     incumplidos = len(df[df["estado"].str.contains("Incumplido", na=False)]) if "estado" in df.columns else 0
 
     total_row = len(df) + 3
-    ws.merge_cells(f"A{total_row}:{get_column_letter(len(columnas))}{total_row}")
+    try:
+        ws.merge_cells(f"A{total_row}:{get_column_letter(len(columnas))}{total_row}")
+    except Exception:
+        pass
     ct = ws.cell(row=total_row, column=1, value=f"TOTAL VIAJES: {len(df)}   |   ✅ {completados}  ❌ {anulados}  ⚠️ {incumplidos}")
     ct.font = ft_total; ct.fill = fill_total; ct.alignment = centro
 
