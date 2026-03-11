@@ -464,16 +464,20 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     ws2 = wb.create_sheet("Resumen")
 
     def hdr(ws, fila, col1, col2, texto):
-        ws.merge_cells(f"{get_column_letter(col1)}{fila}:{get_column_letter(col2)}{fila}")
+        # Sin merge_cells para evitar errores de Excel
         c = ws.cell(fila, col1, texto)
         c.font = ft_header
         c.fill = PatternFill("solid", start_color="203A43")
         c.alignment = centro
         c.border = borde
         ws.row_dimensions[fila].height = 20
+        # Rellenar celdas adyacentes del header con mismo color
+        for col in range(col1+1, col2+1):
+            cx = ws.cell(fila, col, "")
+            cx.fill = PatternFill("solid", start_color="203A43")
+            cx.border = borde
 
     # Título
-    ws2.merge_cells("A1:H1")
     ws2["A1"] = "Resumen General de Operaciones"
     ws2["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws2["A1"].fill = PatternFill("solid", start_color="0F2027")
@@ -531,7 +535,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     # ==================== HOJA CONDUCTORES ====================
     ws3 = wb.create_sheet("Conductores")
-    ws3.merge_cells("A1:G1")
     ws3["A1"] = "Ranking de Conductores"
     ws3["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws3["A1"].fill = PatternFill("solid", start_color="0F2027")
@@ -572,7 +575,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     # ==================== HOJA TIEMPOS ====================
     ws4 = wb.create_sheet("Tiempos")
-    ws4.merge_cells("A1:H1")
     ws4["A1"] = "Analisis de Tiempos por Viaje"
     ws4["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws4["A1"].fill = PatternFill("solid", start_color="0F2027")
@@ -623,7 +625,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     # Fila promedios
     fila_prom = len(df) + 3
-    ws4.merge_cells(f"A{fila_prom}:D{fila_prom}")
     cp = ws4.cell(fila_prom, 1, "PROMEDIO")
     cp.font = ft_total; cp.fill = fill_total; cp.alignment = centro; cp.border = borde
     for ci, (tot, cnt) in enumerate([(tot_espera,count_e),(tot_transito,count_t),(tot_desc,count_d),(tot_total,count_tot)], start=5):
