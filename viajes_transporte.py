@@ -1,12 +1,3 @@
-import streamlit as st
-import psycopg2
-import pandas as pd
-from datetime import datetime, timedelta, time
-import io
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-import pytz
 import smtplib
 import ssl
 from email.mime.text import MIMEText
@@ -58,8 +49,6 @@ def enviar_notificacion_automatica(datos):
         except Exception as e:
             # Si falla el correo, lo mostramos en consola para no bloquear la App
             print(f"Error enviando notificación: {e}")
-
-
 # ==================== CONFIGURACIÓN ====================
 st.set_page_config(
     page_title="Control de Viajes",
