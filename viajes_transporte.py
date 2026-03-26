@@ -3,56 +3,62 @@ import psycopg2
 import pandas as pd
 from datetime import datetime, timedelta, time
 import io
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-import pytz
 import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # ==================== CONFIGURACIÓN CORREO ====================
+# Tu dirección y contraseña de aplicación
 EMAIL_SOPORTE = "santiago2424241@gmail.com"
 EMAIL_PASSWORD = "zggl rnol sswn nayt" 
 
 def enviar_notificacion_automatica(datos):
-    """Envía un correo si el estado es Anulado o Incumplido"""
-    # Limpiamos el estado por si viene con emojis
-    estado_raw = datos.get("estado", "")
-    estado_limpio = estado_raw.replace("✅ ", "").replace("❌ ", "").replace("⚠️ ", "").replace("🔄 ", "").strip()
+    """Envía un correo si el estado es crítico"""
+    # 1. Limpiar el estado de emojis y espacios para comparar bien
+    estado_raw = str(datos.get("estado", ""))
+    estado_limpio = estado_raw.replace("✅", "").replace("❌", "").replace("⚠️", "").replace("🔄", "").strip()
     
-    # Solo envía si es Anulado o Incumplido
-    if estado_limpio in ["Anulado", "Incumplido"]:
+    # 2. DEFINIR CUÁNDO ENVIAR: (Aquí he dejado Anulado e Incumplido)
+    estados_alerta = ["Anulado", "Incumplido"]
+    
+    if estado_limpio in estados_alerta:
         try:
             msg = MIMEMultipart()
             msg["From"] = EMAIL_SOPORTE
-            msg["To"] = EMAIL_SOPORTE
+            msg["To"] = EMAIL_SOPORTE # Te lo envías a ti mismo
             msg["Subject"] = f"⚠️ ALERTA: Viaje {estado_limpio.upper()} - Placa {datos['placa']}"
 
-            cuerpo_html = f"""
+            cuerpo = f"""
             <html>
-            <body style="font-family: sans-serif; color: #333;">
-                <div style="background-color: #f8f9fa; padding: 20px; border: 1px solid #dee2e6;">
-                    <h2 style="color: #d9534f;">Notificación de Incidencia</h2>
-                    <p>Se ha registrado un viaje con estado <b>{estado_limpio}</b>.</p>
-                    <hr>
-                    <p><b>Placa:</b> {datos['placa']}<br>
-                    <b>Conductor:</b> {datos['conductor']}<br>
-                    <b>Cliente:</b> {datos['cliente']}<br>
-                    <b>Ruta:</b> {datos['origen']} → {datos['destino']}<br>
-                    <b>Observación:</b> {datos.get('observacion', 'Sin observaciones')}</p>
-                </div>
+            <body style="font-family: Arial; line-height: 1.6;">
+                <h2 style="color: red;">Notificación de Incidencia</h2>
+                <p><b>Estado detectado:</b> {estado_limpio}</p>
+                <hr>
+                <ul>
+                    <li><b>Placa:</b> {datos['placa']}</li>
+                    <li><b>Conductor:</b> {datos['conductor']}</li>
+                    <li><b>Cliente:</b> {datos['cliente']}</li>
+                    <li><b>Ruta:</b> {datos['origen']} a {datos['destino']}</li>
+                    <li><b>Observación:</b> {datos.get('observacion', 'N/A')}</li>
+                </ul>
             </body>
             </html>
             """
-            msg.attach(MIMEText(cuerpo_html, "html"))
+            msg.attach(MIMEText(cuerpo, "html"))
+            
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
                 server.login(EMAIL_SOPORTE, EMAIL_PASSWORD)
                 server.sendmail(EMAIL_SOPORTE, EMAIL_SOPORTE, msg.as_string())
+            
+            # Mensaje de éxito en la App
+            st.toast(f"📧 Correo enviado a {EMAIL_SOPORTE}", icon="📩")
+            
         except Exception as e:
-            st.error(f"Error al enviar correo: {e}")
+            st.error(f"❌ Error de Gmail: {e}")
+    else:
+        st.info(f"ℹ️ Estado '{estado_limpio}' no requiere notificación por correo.")
 
 # ==================== CONFIGURACIÓN ====================
 st.set_page_config(
