@@ -7,6 +7,58 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import pytz
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# ==================== CONFIGURACIÓN CORREO ====================
+EMAIL_SOPORTE = "santiago2424241@gmail.com"
+EMAIL_PASSWORD = "zggl rnol sswn nayt"  # Tu contraseña de aplicación generada
+
+def enviar_notificacion_automatica(datos):
+    """
+    Función interna que envía un correo si el viaje tiene 
+    un estado de incidencia (Anulado o Incumplido).
+    """
+    estado = datos.get("estado", "")
+    # Verificamos si el estado es de alerta
+    if estado in ["Anulado", "Incumplido"]:
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = EMAIL_SOPORTE
+            msg["To"] = EMAIL_SOPORTE
+            msg["Subject"] = f"⚠️ ALERTA OPERATIVA: Viaje {estado.upper()} - {datos['placa']}"
+
+            cuerpo_html = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif;">
+                <h2 style="color: #c0392b;">Reporte de Incidencia en Transporte</h2>
+                <p>Se ha detectado un cambio de estado crítico en el sistema:</p>
+                <table border="1" cellpadding="10" style="border-collapse: collapse; width: 100%;">
+                    <tr style="background-color: #f2f2f2;"><td><b>Estado</b></td><td><b style="color: red;">{estado}</b></td></tr>
+                    <tr><td><b>Placa</b></td><td>{datos['placa']}</td></tr>
+                    <tr><td><b>Conductor</b></td><td>{datos['conductor']}</td></tr>
+                    <tr><td><b>Cliente</b></td><td>{datos['cliente']}</td></tr>
+                    <tr><td><b>Ruta</b></td><td>{datos['origen']} → {datos['destino']}</td></tr>
+                    <tr><td><b>Fecha</b></td><td>{datos['fecha']}</td></tr>
+                    <tr><td><b>Observación</b></td><td>{datos['observacion']}</td></tr>
+                </table>
+                <br>
+                <p><i>Este es un correo automático generado por el Control de Viajes.</i></p>
+            </body>
+            </html>
+            """
+            msg.attach(MIMEText(cuerpo_html, "html"))
+
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+                server.login(EMAIL_SOPORTE, EMAIL_PASSWORD)
+                server.sendmail(EMAIL_SOPORTE, EMAIL_SOPORTE, msg.as_string())
+        except Exception as e:
+            # Si falla el correo, lo mostramos en consola para no bloquear la App
+            print(f"Error enviando notificación: {e}")
+
 
 # ==================== CONFIGURACIÓN ====================
 st.set_page_config(
