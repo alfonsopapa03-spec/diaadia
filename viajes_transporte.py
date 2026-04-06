@@ -325,12 +325,22 @@ def calcular_duracion(h_ini, h_fin):
     return int(diff.total_seconds() / 60)
 
 def mins_a_str(mins):
-    if mins is None: return "—"
-    h, m = divmod(int(mins), 60)
-    return f"{h}h {m:02d}m"
+    """Convierte minutos a string legible. Maneja None y NaN de forma segura."""
+    if mins is None:
+        return "—"
+    try:
+        if pd.isna(mins):
+            return "—"
+    except Exception:
+        pass
+    try:
+        h, m = divmod(int(mins), 60)
+        return f"{h}h {m:02d}m"
+    except Exception:
+        return "—"
 
 
-# ==================== PDF (NUEVO FORMATO MINIMALISTA) ====================
+# ==================== PDF ====================
 def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     output = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -341,7 +351,7 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         title=titulo,
     )
 
-    # ─── Paleta minimalista ───────────────────────────────────────────
+    # ─── Paleta ───────────────────────────────────────────────────────
     C_BLACK  = colors.HexColor("#1A1A2E")
     C_DARK   = colors.HexColor("#16213E")
     C_MID    = colors.HexColor("#0F3460")
@@ -386,6 +396,8 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     S_KPI_L      = ps("kl",  size=6,  color=C_MUTED,  align=1)
     S_TOTAL      = ps("tot", size=7,  color=C_BLACK,  align=1, bold=True)
     S_NOTE       = ps("nt",  size=6,  color=C_MUTED,  align=1)
+    S_T_V        = ps("tv",  size=14, color=C_MID,    align=1, bold=True)
+    S_T_L        = ps("tl",  size=6,  color=C_MUTED,  align=1)
 
     now_col = datetime.now(pytz.timezone("America/Bogota"))
 
@@ -413,13 +425,11 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         ]))
         return t
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 1 — ENCABEZADO PRINCIPAL
-    # ═══════════════════════════════════════════════════════════════════
+    # ═══════════ ENCABEZADO ═══════════
     header_data = [[
-        Paragraph(f"CONTROL DE VIAJES  ·  {titulo.upper()}", S_MAIN_TITLE),
+        Paragraph(f"CONTROL DE VIAJES  -  {titulo.upper()}", S_MAIN_TITLE),
         Paragraph(
-            f"Generado: {now_col.strftime('%d/%m/%Y  %H:%M')} (COL)  ·  {total} viajes registrados",
+            f"Generado: {now_col.strftime('%d/%m/%Y  %H:%M')} (COL)  -  {total} viajes registrados",
             S_SUBTITLE
         ),
     ]]
@@ -436,31 +446,23 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     story.append(header_tbl)
     story.append(Spacer(1, 0.4*cm))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 2 — KPIs
-    # ═══════════════════════════════════════════════════════════════════
-    story.append(sec_header("▌ RESUMEN EJECUTIVO"))
+    # ═══════════ KPIs ═══════════
+    story.append(sec_header("RESUMEN EJECUTIVO"))
     story.append(Spacer(1, 0.2*cm))
 
     AK = PAGE_W / 6
     kpis = [
-        (str(total), "TOTAL VIAJES",    C_LIGHT),
-        (str(comp),  "COMPLETADOS",     C_R_COMP),
-        (str(anul),  "ANULADOS",        C_R_ANUL),
-        (str(incu),  "INCUMPLIDOS",     C_R_INCU),
-        (str(curso), "EN CURSO",        C_R_CURS),
-        (f"{pct}%",  "CUMPLIMIENTO",    C_LIGHT),
+        (str(total), "TOTAL VIAJES",  C_LIGHT),
+        (str(comp),  "COMPLETADOS",   C_R_COMP),
+        (str(anul),  "ANULADOS",      C_R_ANUL),
+        (str(incu),  "INCUMPLIDOS",   C_R_INCU),
+        (str(curso), "EN CURSO",      C_R_CURS),
+        (f"{pct}%",  "CUMPLIMIENTO",  C_LIGHT),
     ]
     badge_colors = [C_MID, C_K_COMP, C_K_ANUL, C_K_INCU, C_K_CURS, C_MID]
-
     kpi_row_val = [Paragraph(v, S_KPI_V) for v, _, _ in kpis]
     kpi_row_lbl = [Paragraph(l, S_KPI_L) for _, l, _ in kpis]
-
-    kpi_tbl = Table(
-        [kpi_row_val, kpi_row_lbl],
-        colWidths=[AK] * 6,
-        rowHeights=[1.1*cm, 0.4*cm]
-    )
+    kpi_tbl = Table([kpi_row_val, kpi_row_lbl], colWidths=[AK]*6, rowHeights=[1.1*cm, 0.4*cm])
     kpi_style = [
         ("TOPPADDING",    (0,0), (-1,-1), 6),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
@@ -473,14 +475,11 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         if i < 5:
             kpi_style.append(("LINEAFTER", (i,0), (i,-1), 0.5, C_BORDER))
     kpi_tbl.setStyle(TableStyle(kpi_style))
-
     story.append(kpi_tbl)
     story.append(Spacer(1, 0.5*cm))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 3 — TABLA DE VIAJES
-    # ═══════════════════════════════════════════════════════════════════
-    story.append(sec_header("▌ DETALLE DE VIAJES", f"{total} registros"))
+    # ═══════════ TABLA VIAJES ═══════════
+    story.append(sec_header("DETALLE DE VIAJES", f"{total} registros"))
     story.append(Spacer(1, 0.2*cm))
 
     cols_pdf = [
@@ -498,7 +497,6 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         ("estado",                 "ESTADO",     2.0*cm),
     ]
     col_w = [w for _, _, w in cols_pdf]
-
     hdr_row = [Paragraph(n, S_HDR) for _, n, _ in cols_pdf]
 
     def row_bg(estado_val, idx):
@@ -510,7 +508,6 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     data_rows  = [hdr_row]
     row_colors = []
-
     for ri, (_, fila) in enumerate(df.iterrows()):
         est = str(fila.get("estado", ""))
         bg  = row_bg(est, ri)
@@ -518,8 +515,11 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         row = []
         for key, _, _ in cols_pdf:
             val = fila.get(key, "")
-            if not isinstance(val, str) and pd.isna(val): val = ""
-            if key.startswith("hora_") and val: val = str(val)[:5]
+            try:
+                if not isinstance(val, str) and pd.isna(val): val = ""
+            except Exception: pass
+            if key.startswith("hora_") and val:
+                val = str(val)[:5]
             val = str(val) if val != "" else ""
             centered = key in ("fecha","placa","estado") or key.startswith("hora_")
             row.append(Paragraph(val, S_CELL_C if centered else S_CELL))
@@ -544,14 +544,10 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     story.append(main_tbl)
     story.append(Spacer(1, 0.2*cm))
 
-    # Fila resumen totales
     totales_txt = (
-        f"TOTAL: {total} viajes   ·   "
-        f"Completados: {comp}   ·   "
-        f"Anulados: {anul}   ·   "
-        f"Incumplidos: {incu}   ·   "
-        f"En Curso: {curso}   ·   "
-        f"Cumplimiento: {pct}%"
+        f"TOTAL: {total} viajes   -   Completados: {comp}   -   "
+        f"Anulados: {anul}   -   Incumplidos: {incu}   -   "
+        f"En Curso: {curso}   -   Cumplimiento: {pct}%"
     )
     tot_tbl = Table([[Paragraph(totales_txt, S_TOTAL)]], colWidths=[PAGE_W])
     tot_tbl.setStyle(TableStyle([
@@ -565,19 +561,15 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     story.append(tot_tbl)
     story.append(Spacer(1, 0.6*cm))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 4 — CLIENTES & PLACAS (lado a lado)
-    # ═══════════════════════════════════════════════════════════════════
+    # ═══════════ CLIENTES & PLACAS ═══════════
     if "cliente" in df.columns and df["cliente"].notna().any():
         half = (PAGE_W - 0.4*cm) / 2
 
-        # Tabla clientes
         por_cli = (
             df.groupby("cliente")
             .agg(viajes=("cliente","count"),
                  comp_c=("estado", lambda x: x.str.contains("Completado", na=False).sum()))
-            .reset_index()
-            .sort_values("viajes", ascending=False)
+            .reset_index().sort_values("viajes", ascending=False)
         )
         cli_hdr  = [Paragraph(h, S_HDR) for h in ["CLIENTE","VIAJES","COMPL."]]
         cli_data = [cli_hdr]
@@ -590,26 +582,22 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             ])
         cli_tbl = Table(cli_data, colWidths=[half*0.65, half*0.18, half*0.17])
         cli_sty = [
-            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
-            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
-            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
-            ("TOPPADDING",    (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("LEFTPADDING",   (0,0), (-1,-1), 4),
-            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND", (0,0), (-1,0), C_MID),
+            ("GRID",       (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",  (0,0), (-1,0), 1.2, C_ACCENT),
+            ("TOPPADDING", (0,0), (-1,-1), 2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
+            ("LEFTPADDING",(0,0),(-1,-1),4), ("RIGHTPADDING",(0,0),(-1,-1),4),
+            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
         ]
         for i in range(1, len(cli_data)):
             cli_sty.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
         cli_tbl.setStyle(TableStyle(cli_sty))
 
-        # Tabla placas
         por_placa = (
             df.groupby("placa")
             .agg(viajes=("placa","count"),
                  comp_p=("estado", lambda x: x.str.contains("Completado", na=False).sum()))
-            .reset_index()
-            .sort_values("viajes", ascending=False)
+            .reset_index().sort_values("viajes", ascending=False)
         )
         placa_hdr  = [Paragraph(h, S_HDR) for h in ["PLACA","CONDUCTOR","VIAJES","COMPL."]]
         placa_data = [placa_hdr]
@@ -624,22 +612,19 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             ])
         placa_tbl = Table(placa_data, colWidths=[half*0.18, half*0.52, half*0.16, half*0.14])
         placa_sty = [
-            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
-            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
-            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
-            ("TOPPADDING",    (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("LEFTPADDING",   (0,0), (-1,-1), 4),
-            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND", (0,0), (-1,0), C_MID),
+            ("GRID",       (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",  (0,0), (-1,0), 1.2, C_ACCENT),
+            ("TOPPADDING", (0,0), (-1,-1), 2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
+            ("LEFTPADDING",(0,0),(-1,-1),4), ("RIGHTPADDING",(0,0),(-1,-1),4),
+            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
         ]
         for i in range(1, len(placa_data)):
             placa_sty.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
         placa_tbl.setStyle(TableStyle(placa_sty))
 
-        story.append(sec_header("▌ CLIENTES  &  PLACAS"))
+        story.append(sec_header("CLIENTES  &  PLACAS"))
         story.append(Spacer(1, 0.2*cm))
-
         sec_hdrs = Table(
             [[Paragraph("  VIAJES POR CLIENTE", S_SEC_TITLE),
               Paragraph(""),
@@ -647,37 +632,26 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             colWidths=[half, 0.4*cm, half]
         )
         sec_hdrs.setStyle(TableStyle([
-            ("BACKGROUND",    (0,0), (0,0),  C_MID),
-            ("BACKGROUND",    (2,0), (2,0),  C_MID),
-            ("BACKGROUND",    (1,0), (1,0),  C_WHITE),
-            ("TOPPADDING",    (0,0), (-1,-1), 4),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("BACKGROUND", (0,0),(0,0), C_MID), ("BACKGROUND",(2,0),(2,0),C_MID),
+            ("BACKGROUND", (1,0),(1,0), C_WHITE),
+            ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
+            ("LEFTPADDING",(0,0),(-1,-1),6),
         ]))
         story.append(sec_hdrs)
         story.append(Spacer(1, 0.1*cm))
-
-        side_tbl = Table(
-            [[cli_tbl, Spacer(0.4*cm, 1), placa_tbl]],
-            colWidths=[half, 0.4*cm, half]
-        )
+        side_tbl = Table([[cli_tbl, Spacer(0.4*cm, 1), placa_tbl]], colWidths=[half, 0.4*cm, half])
         side_tbl.setStyle(TableStyle([
-            ("VALIGN",        (0,0), (-1,-1), "TOP"),
-            ("LEFTPADDING",   (0,0), (-1,-1), 0),
-            ("RIGHTPADDING",  (0,0), (-1,-1), 0),
-            ("TOPPADDING",    (0,0), (-1,-1), 0),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ("VALIGN",(0,0),(-1,-1),"TOP"),
+            ("LEFTPADDING",(0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
+            ("TOPPADDING",(0,0),(-1,-1),0), ("BOTTOMPADDING",(0,0),(-1,-1),0),
         ]))
         story.append(side_tbl)
         story.append(Spacer(1, 0.6*cm))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 5 — RANKING DE CONDUCTORES
-    # ═══════════════════════════════════════════════════════════════════
+    # ═══════════ RANKING CONDUCTORES ═══════════
     if "conductor" in df.columns:
-        story.append(sec_header("▌ RANKING DE CONDUCTORES"))
+        story.append(sec_header("RANKING DE CONDUCTORES"))
         story.append(Spacer(1, 0.2*cm))
-
         df_c = (
             df.groupby("conductor")
             .agg(
@@ -687,19 +661,16 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
                 incu =("estado", lambda x: x.str.contains("Incumplido", na=False).sum()),
                 curs =("estado", lambda x: x.str.contains("En Curso",   na=False).sum()),
             )
-            .reset_index()
-            .sort_values("total", ascending=False)
+            .reset_index().sort_values("total", ascending=False)
         )
-
         hdrs_c = ["#","CONDUCTOR","TOTAL","COMPL.","ANUL.","INCUMP.","CURSO","% CUMPL.","BARRA"]
         aw = PAGE_W / 10
         cw_c = [aw*0.5, aw*3.8, aw*0.7, aw*0.8, aw*0.8, aw*0.8, aw*0.8, aw*0.8, aw*1.5]
-
         cond_data = [[Paragraph(h, S_HDR) for h in hdrs_c]]
         for idx, r in enumerate(df_c.itertuples()):
             pct_c  = round(r.comp / r.total * 100) if r.total > 0 else 0
             filled = int(pct_c / 10)
-            bar_str = "█" * filled + "░" * (10 - filled)
+            bar_str = "I" * filled + "." * (10 - filled)
             cond_data.append([
                 Paragraph(str(idx+1),       S_CELL_SM),
                 Paragraph(str(r.conductor), S_CELL),
@@ -711,28 +682,23 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
                 Paragraph(f"{pct_c}%",      S_CELL_C),
                 Paragraph(bar_str,          S_NOTE),
             ])
-
         cond_tbl = Table(cond_data, colWidths=cw_c)
         cond_style = [
-            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
-            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
-            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
-            ("TOPPADDING",    (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("LEFTPADDING",   (0,0), (-1,-1), 4),
-            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND", (0,0), (-1,0), C_MID),
+            ("GRID",       (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",  (0,0), (-1,0), 1.2, C_ACCENT),
+            ("TOPPADDING", (0,0),(-1,-1),2), ("BOTTOMPADDING",(0,0),(-1,-1),2),
+            ("LEFTPADDING",(0,0),(-1,-1),4), ("RIGHTPADDING",(0,0),(-1,-1),4),
+            ("VALIGN",     (0,0),(-1,-1),"MIDDLE"),
         ]
         for i in range(1, len(cond_data)):
-            cond_style.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
+            cond_style.append(("BACKGROUND",(0,i),(-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
         cond_tbl.setStyle(TableStyle(cond_style))
         story.append(cond_tbl)
         story.append(Spacer(1, 0.6*cm))
 
-    # ═══════════════════════════════════════════════════════════════════
-    # SECCIÓN 6 — TIEMPOS PROMEDIO
-    # ═══════════════════════════════════════════════════════════════════
-    story.append(sec_header("▌ ANÁLISIS DE TIEMPOS PROMEDIO"))
+    # ═══════════ TIEMPOS PROMEDIO (CORREGIDO) ═══════════
+    story.append(sec_header("ANALISIS DE TIEMPOS PROMEDIO"))
     story.append(Spacer(1, 0.2*cm))
 
     tiempos_rows = []
@@ -740,25 +706,39 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         t_esp = calcular_duracion(r.get("hora_cita_cargue"),       r.get("hora_salida_cargue"))
         t_tra = calcular_duracion(r.get("hora_salida_cargue"),     r.get("hora_llegada_descargue"))
         t_des = calcular_duracion(r.get("hora_llegada_descargue"), r.get("hora_salida_descargue"))
-        t_tot = (t_esp or 0)+(t_tra or 0)+(t_des or 0) if all(x is not None for x in [t_esp,t_tra,t_des]) else None
+        # Calcular total solo si todos los parciales están disponibles
+        if t_esp is not None and t_tra is not None and t_des is not None:
+            t_tot = t_esp + t_tra + t_des
+        else:
+            t_tot = None
         tiempos_rows.append((t_esp, t_tra, t_des, t_tot))
 
     def prom_min(vals):
-        v = [x for x in vals if x is not None]
-        return sum(v)/len(v) if v else None
+        """Promedio seguro que ignora None y NaN."""
+        v = []
+        for x in vals:
+            if x is None:
+                continue
+            try:
+                if pd.isna(x):
+                    continue
+            except Exception:
+                pass
+            try:
+                v.append(int(x))
+            except Exception:
+                pass
+        return sum(v) / len(v) if v else None
 
     t_e_p = prom_min([r[0] for r in tiempos_rows])
     t_t_p = prom_min([r[1] for r in tiempos_rows])
     t_d_p = prom_min([r[2] for r in tiempos_rows])
     t_o_p = prom_min([r[3] for r in tiempos_rows])
 
-    S_T_V = ps("tv", size=14, color=C_MID, align=1, bold=True)
-    S_T_L = ps("tl", size=6,  color=C_MUTED, align=1)
-
     AT = PAGE_W / 4
     tiempo_row_v = [Paragraph(mins_a_str(x), S_T_V) for x in [t_e_p, t_t_p, t_d_p, t_o_p]]
     tiempo_row_l = [Paragraph(l, S_T_L) for l in [
-        "ESPERA EN CARGUE", "TRÁNSITO", "DESCARGUE", "OPERACIÓN TOTAL"
+        "ESPERA EN CARGUE", "TRANSITO", "DESCARGUE", "OPERACION TOTAL"
     ]]
     tiempo_tbl = Table([tiempo_row_v, tiempo_row_l], colWidths=[AT]*4, rowHeights=[0.9*cm, 0.35*cm])
     tiempo_style = [
@@ -785,8 +765,8 @@ def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         canvas.setFont("Helvetica", 5.5)
         canvas.setFillColor(C_MUTED)
         canvas.drawString(1.2*cm, 0.75*cm,
-            f"Control de Viajes  ·  {titulo}  ·  {now_col.strftime('%d/%m/%Y %H:%M')} COL")
-        canvas.drawRightString(w - 1.2*cm, 0.75*cm, f"Página {doc.page}")
+            f"Control de Viajes  -  {titulo}  -  {now_col.strftime('%d/%m/%Y %H:%M')} COL")
+        canvas.drawRightString(w - 1.2*cm, 0.75*cm, f"Pagina {doc.page}")
         canvas.setFillColor(C_ACCENT)
         canvas.rect(1.2*cm, 1.1*cm, 1.5*cm, 0.15*cm, fill=1, stroke=0)
         canvas.restoreState()
@@ -839,7 +819,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     ]
     cols_coord = ["LAT. ORIGEN","LON. ORIGEN","LAT. DESTINO","LON. DESTINO"]
     total_cols = len(columnas) + len(cols_coord)
-
     ws.merge_cells(f"A1:{get_column_letter(total_cols)}1")
 
     for idx, (key, nombre, ancho) in enumerate(columnas, start=1):
@@ -896,9 +875,7 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     ct = ws.cell(row=total_row, column=1, value=f"TOTAL VIAJES: {len(df)}   |   Completados: {completados}  Anulados: {anulados}  Incumplidos: {incumplidos}")
     ct.font = ft_total; ct.fill = fill_total; ct.alignment = centro
 
-    # ---- HOJA RESUMEN ----
     ws2 = wb.create_sheet("Resumen")
-
     def hdr(ws, fila, col1, col2, texto):
         c = ws.cell(fila, col1, texto)
         c.font = ft_header; c.fill = PatternFill("solid", start_color="203A43")
@@ -916,13 +893,12 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
 
     hdr(ws2, 2, 1, 2, "RESUMEN GENERAL")
     en_curso = len(df[df["estado"].str.contains("En Curso", na=False)]) if "estado" in df.columns else 0
-    kpis = [
+    kpis_xl = [
         ("Total Viajes", len(df)), ("Completados", completados),
-        ("Anulados", anulados), ("Incumplidos", incumplidos),
-        ("En Curso", en_curso),
+        ("Anulados", anulados), ("Incumplidos", incumplidos), ("En Curso", en_curso),
         ("% Cumplimiento", f"{round(completados/len(df)*100,1)}%" if len(df) > 0 else "0%"),
     ]
-    for i, (m, v) in enumerate(kpis, start=3):
+    for i, (m, v) in enumerate(kpis_xl, start=3):
         c1 = ws2.cell(i, 1, m); c2 = ws2.cell(i, 2, v)
         c1.font = ft_normal; c2.font = ft_total
         c1.border = borde; c2.border = borde
@@ -958,30 +934,26 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     for col_l, w in zip(["A","B","C","D","E","F","G","H"], [22,10,3,24,8,3,12,8]):
         ws2.column_dimensions[col_l].width = w
 
-    # ---- HOJA CONDUCTORES ----
     ws3 = wb.create_sheet("Conductores")
     ws3["A1"] = "Ranking de Conductores"
     ws3["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws3["A1"].fill = PatternFill("solid", start_color="0F2027")
     ws3["A1"].alignment = centro
     ws3.row_dimensions[1].height = 26
-
     hdrs3 = ["CONDUCTOR","TOTAL","COMPLET.","ANULADOS","INCUMPL.","EN CURSO","% CUMPL."]
     for ci, h in enumerate(hdrs3, start=1):
         c = ws3.cell(2, ci, h)
         c.font = ft_header; c.fill = PatternFill("solid", start_color="203A43")
         c.alignment = centro; c.border = borde
     ws3.row_dimensions[2].height = 20
-
     if "conductor" in df.columns:
         df_cond = df.groupby("conductor").agg(
             total=("conductor","count"),
-            comp=("estado",  lambda x: x.str.contains("Completado", na=False).sum()),
-            anul=("estado",  lambda x: x.str.contains("Anulado",    na=False).sum()),
-            incu=("estado",  lambda x: x.str.contains("Incumplido", na=False).sum()),
-            curs=("estado",  lambda x: x.str.contains("En Curso",   na=False).sum()),
+            comp=("estado", lambda x: x.str.contains("Completado", na=False).sum()),
+            anul=("estado", lambda x: x.str.contains("Anulado",    na=False).sum()),
+            incu=("estado", lambda x: x.str.contains("Incumplido", na=False).sum()),
+            curs=("estado", lambda x: x.str.contains("En Curso",   na=False).sum()),
         ).reset_index().sort_values("total", ascending=False)
-
         for i, row in enumerate(df_cond.itertuples(), start=3):
             pct_r = f"{round(row.comp/row.total*100,1)}%" if row.total > 0 else "0%"
             vals = [row.conductor, row.total, row.comp, row.anul, row.incu, row.curs, pct_r]
@@ -991,29 +963,24 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
                 c.font = ft_normal; c.border = borde
                 c.alignment = izq if ci == 1 else centro
                 if fill_c: c.fill = fill_c
-
     for col_l, w in zip(["A","B","C","D","E","F","G"], [32,8,10,10,10,10,10]):
         ws3.column_dimensions[col_l].width = w
     ws3.freeze_panes = "A3"
 
-    # ---- HOJA TIEMPOS ----
     ws4 = wb.create_sheet("Tiempos")
     ws4["A1"] = "Analisis de Tiempos por Viaje"
     ws4["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws4["A1"].fill = PatternFill("solid", start_color="0F2027")
     ws4["A1"].alignment = centro
     ws4.row_dimensions[1].height = 26
-
     hdrs4 = ["FECHA","PLACA","CONDUCTOR","CLIENTE","ESPERA CARGUE","TRANSITO","DESCARGUE","TOTAL OPERACION"]
     for ci, h in enumerate(hdrs4, start=1):
         c = ws4.cell(2, ci, h)
         c.font = ft_header; c.fill = PatternFill("solid", start_color="203A43")
         c.alignment = centro; c.border = borde
     ws4.row_dimensions[2].height = 20
-
     tot_espera = tot_transito = tot_desc = tot_total = 0
     count_e = count_t = count_d = count_tot = 0
-
     for i, (_, row) in enumerate(df.iterrows(), start=3):
         t_espera  = calcular_duracion(row.get("hora_cita_cargue"),       row.get("hora_salida_cargue"))
         t_transit = calcular_duracion(row.get("hora_salida_cargue"),     row.get("hora_llegada_descargue"))
@@ -1021,17 +988,14 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         t_total   = None
         if t_espera is not None and t_transit is not None and t_desc is not None:
             t_total = t_espera + t_transit + t_desc
-
         if t_espera  is not None: tot_espera   += t_espera;  count_e   += 1
         if t_transit is not None: tot_transito += t_transit; count_t   += 1
         if t_desc    is not None: tot_desc     += t_desc;    count_d   += 1
         if t_total   is not None: tot_total    += t_total;   count_tot += 1
-
         vals = [
             str(row.get("fecha","")), str(row.get("placa","")),
             str(row.get("conductor","")), str(row.get("cliente","")),
-            mins_a_str(t_espera), mins_a_str(t_transit),
-            mins_a_str(t_desc), mins_a_str(t_total),
+            mins_a_str(t_espera), mins_a_str(t_transit), mins_a_str(t_desc), mins_a_str(t_total),
         ]
         fill_t = PatternFill("solid", start_color="EBF5FB") if i % 2 == 0 else None
         for ci, v in enumerate(vals, start=1):
@@ -1039,35 +1003,29 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             c.font = ft_normal; c.border = borde
             c.alignment = izq if ci in (1,2,3,4) else centro
             if fill_t: c.fill = fill_t
-
     fila_prom = len(df) + 3
     cp = ws4.cell(fila_prom, 1, "PROMEDIO")
     cp.font = ft_total; cp.fill = fill_total; cp.alignment = centro; cp.border = borde
     for ci, (tot, cnt) in enumerate([(tot_espera,count_e),(tot_transito,count_t),(tot_desc,count_d),(tot_total,count_tot)], start=5):
         c = ws4.cell(fila_prom, ci, mins_a_str(tot/cnt if cnt > 0 else None))
         c.font = ft_total; c.fill = fill_total; c.alignment = centro; c.border = borde
-
     for col_l, w in zip(["A","B","C","D","E","F","G","H"], [12,10,28,20,14,14,14,16]):
         ws4.column_dimensions[col_l].width = w
     ws4.freeze_panes = "A3"
 
-    # ---- HOJA GRAFICA ----
     try:
         from openpyxl.chart import PieChart, Reference
         from openpyxl.chart.series import DataPoint
-
         ws5 = wb.create_sheet("Grafica")
         ws5["A1"] = "Estado"; ws5["B1"] = "Cantidad"
         ws5["A1"].font = ft_header; ws5["B1"].font = ft_header
         ws5["A1"].fill = PatternFill("solid", start_color="203A43")
         ws5["B1"].fill = PatternFill("solid", start_color="203A43")
-
         estados_graf = ["Completado","Anulado","Incumplido","En Curso"]
         for i, est in enumerate(estados_graf, start=2):
             cnt = len(df[df["estado"].str.contains(est, na=False)]) if "estado" in df.columns else 0
             ws5.cell(i, 1, est).border = borde
             ws5.cell(i, 2, cnt).border = borde
-
         pie = PieChart()
         pie.title = "Distribucion de Viajes por Estado"
         pie.style = 10
@@ -1076,13 +1034,11 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         pie.add_data(data, titles_from_data=True)
         pie.set_categories(labels)
         pie.width = 15; pie.height = 12
-
         colores_g = ["2ECC71","E74C3C","F39C12","3498DB"]
         for idx, color in enumerate(colores_g):
             pt = DataPoint(idx=idx)
             pt.graphicalProperties.solidFill = color
             pie.series[0].dPt.append(pt)
-
         ws5.add_chart(pie, "D1")
         for col_l, w in zip(["A","B"], [16, 10]):
             ws5.column_dimensions[col_l].width = w
@@ -1118,7 +1074,6 @@ def main():
     # ===================== TAB 1: NUEVO VIAJE =====================
     with tab1:
         st.markdown("### Registrar Nuevo Viaje")
-
         f1, f2, f3, f4 = st.columns(4)
         with f1:
             fecha_pre = st.date_input("📅 Fecha", datetime.now(), key="pre_fecha")
