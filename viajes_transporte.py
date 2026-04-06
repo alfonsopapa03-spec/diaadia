@@ -330,313 +330,465 @@ def mins_a_str(mins):
     return f"{h}h {m:02d}m"
 
 
-# ==================== PDF ====================
+# ==================== PDF (NUEVO FORMATO MINIMALISTA) ====================
 def generar_pdf(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     output = io.BytesIO()
     doc = SimpleDocTemplate(
         output,
         pagesize=landscape(A4),
-        rightMargin=1*cm, leftMargin=1*cm,
+        rightMargin=1.2*cm, leftMargin=1.2*cm,
         topMargin=1.5*cm, bottomMargin=1.5*cm,
         title=titulo,
     )
 
-    # ---- Colores ----
-    C_DARK    = colors.HexColor("#0F2027")
-    C_HEADER  = colors.HexColor("#203A43")
-    C_ALT     = colors.HexColor("#EBF5FB")
-    C_COMP    = colors.HexColor("#D5F5E3")
-    C_ANUL    = colors.HexColor("#FADBD8")
-    C_INCUMP  = colors.HexColor("#FDEBD0")
-    C_CURSO   = colors.HexColor("#D6EAF8")
-    C_TOTAL   = colors.HexColor("#D5DBDB")
-    C_WHITE   = colors.white
-    C_GRAY    = colors.HexColor("#555555")
+    # ─── Paleta minimalista ───────────────────────────────────────────
+    C_BLACK  = colors.HexColor("#1A1A2E")
+    C_DARK   = colors.HexColor("#16213E")
+    C_MID    = colors.HexColor("#0F3460")
+    C_ACCENT = colors.HexColor("#E94560")
+    C_LIGHT  = colors.HexColor("#F5F7FA")
+    C_WHITE  = colors.white
+    C_BORDER = colors.HexColor("#DDE3ED")
+    C_MUTED  = colors.HexColor("#8892A4")
 
-    # ---- Estilos de texto ----
-    st_titulo = ParagraphStyle("tit", fontName="Helvetica-Bold", fontSize=11,
-                               textColor=C_WHITE, alignment=1)
-    st_sub    = ParagraphStyle("sub", fontName="Helvetica",      fontSize=7,
-                               textColor=C_WHITE, alignment=1)
-    st_hdr    = ParagraphStyle("hdr", fontName="Helvetica-Bold", fontSize=7,
-                               textColor=C_WHITE, alignment=1)
-    st_cel    = ParagraphStyle("cel", fontName="Helvetica",      fontSize=6.5,
-                               textColor=colors.HexColor("#1a1a1a"), leading=8)
-    st_cel_c  = ParagraphStyle("celc", fontName="Helvetica",     fontSize=6.5,
-                               textColor=colors.HexColor("#1a1a1a"), alignment=1, leading=8)
-    st_kpi_v  = ParagraphStyle("kpiv", fontName="Helvetica-Bold", fontSize=16,
-                               textColor=C_DARK, alignment=1)
-    st_kpi_l  = ParagraphStyle("kpil", fontName="Helvetica",      fontSize=6.5,
-                               textColor=C_GRAY, alignment=1)
-    st_sec    = ParagraphStyle("sec",  fontName="Helvetica-Bold", fontSize=8,
-                               textColor=C_WHITE, alignment=0)
-    st_tot    = ParagraphStyle("tot",  fontName="Helvetica-Bold", fontSize=7,
-                               textColor=C_DARK, alignment=1)
+    C_K_COMP = colors.HexColor("#27AE60")
+    C_K_ANUL = colors.HexColor("#E74C3C")
+    C_K_INCU = colors.HexColor("#F39C12")
+    C_K_CURS = colors.HexColor("#2980B9")
+
+    C_R_COMP = colors.HexColor("#EAFAF1")
+    C_R_ANUL = colors.HexColor("#FDEDEC")
+    C_R_INCU = colors.HexColor("#FEF9E7")
+    C_R_CURS = colors.HexColor("#EBF5FB")
+
+    PAGE_W = landscape(A4)[0] - 2.4*cm
+
+    # ─── Fábrica de estilos ───────────────────────────────────────────
+    def ps(name, font="Helvetica", size=8, color=C_BLACK, align=0, bold=False, leading=None):
+        return ParagraphStyle(
+            name,
+            fontName="Helvetica-Bold" if bold else font,
+            fontSize=size,
+            textColor=color,
+            alignment=align,
+            leading=leading or size * 1.25,
+        )
+
+    S_MAIN_TITLE = ps("mt",  size=13, color=C_WHITE,  align=1, bold=True)
+    S_SUBTITLE   = ps("st",  size=7,  color=colors.HexColor("#A8B4C8"), align=2)
+    S_SEC_TITLE  = ps("sec", size=8,  color=C_WHITE,  align=0, bold=True)
+    S_SEC_RIGHT  = ps("scr", size=7,  color=colors.HexColor("#A8B4C8"), align=2)
+    S_HDR        = ps("hdr", size=6.5,color=C_WHITE,  align=1, bold=True)
+    S_CELL       = ps("cel", size=6.5,color=C_BLACK,  align=0, leading=9)
+    S_CELL_C     = ps("cec", size=6.5,color=C_BLACK,  align=1, leading=9)
+    S_CELL_SM    = ps("csm", size=6,  color=C_MUTED,  align=1, leading=8)
+    S_KPI_V      = ps("kv",  size=20, color=C_BLACK,  align=1, bold=True)
+    S_KPI_L      = ps("kl",  size=6,  color=C_MUTED,  align=1)
+    S_TOTAL      = ps("tot", size=7,  color=C_BLACK,  align=1, bold=True)
+    S_NOTE       = ps("nt",  size=6,  color=C_MUTED,  align=1)
 
     now_col = datetime.now(pytz.timezone("America/Bogota"))
 
-    completados = len(df[df["estado"].str.contains("Completado", na=False)]) if "estado" in df.columns else 0
-    anulados    = len(df[df["estado"].str.contains("Anulado",    na=False)]) if "estado" in df.columns else 0
-    incumplidos = len(df[df["estado"].str.contains("Incumplido", na=False)]) if "estado" in df.columns else 0
-    en_curso    = len(df[df["estado"].str.contains("En Curso",   na=False)]) if "estado" in df.columns else 0
-    pct = round(completados / len(df) * 100, 1) if len(df) > 0 else 0
+    # ─── Métricas globales ────────────────────────────────────────────
+    total = len(df)
+    comp  = len(df[df["estado"].str.contains("Completado", na=False)]) if "estado" in df.columns else 0
+    anul  = len(df[df["estado"].str.contains("Anulado",    na=False)]) if "estado" in df.columns else 0
+    incu  = len(df[df["estado"].str.contains("Incumplido", na=False)]) if "estado" in df.columns else 0
+    curso = len(df[df["estado"].str.contains("En Curso",   na=False)]) if "estado" in df.columns else 0
+    pct   = round(comp / total * 100, 1) if total > 0 else 0
 
     story = []
-    PAGE_W = landscape(A4)[0] - 2*cm  # ancho útil
 
-    # ---- BLOQUE TÍTULO ----
-    titulo_tbl = Table(
-        [[Paragraph(f"CONTROL DE VIAJES  |  {titulo}  |  Generado: {now_col.strftime('%d/%m/%Y %H:%M')} COL  |  Total: {len(df)} viajes", st_titulo)]],
-        colWidths=[PAGE_W]
-    )
-    titulo_tbl.setStyle(TableStyle([
-        ("BACKGROUND",   (0,0),(-1,-1), C_DARK),
-        ("TOPPADDING",   (0,0),(-1,-1), 8),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 8),
-        ("LEFTPADDING",  (0,0),(-1,-1), 12),
-        ("RIGHTPADDING", (0,0),(-1,-1), 12),
+    # ─── Helper: encabezado de sección ───────────────────────────────
+    def sec_header(text, right_text=""):
+        row = [[Paragraph(f"  {text}", S_SEC_TITLE), Paragraph(right_text, S_SEC_RIGHT)]]
+        t = Table(row, colWidths=[PAGE_W * 0.7, PAGE_W * 0.3])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,-1), C_MID),
+            ("TOPPADDING",    (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ]))
+        return t
+
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 1 — ENCABEZADO PRINCIPAL
+    # ═══════════════════════════════════════════════════════════════════
+    header_data = [[
+        Paragraph(f"CONTROL DE VIAJES  ·  {titulo.upper()}", S_MAIN_TITLE),
+        Paragraph(
+            f"Generado: {now_col.strftime('%d/%m/%Y  %H:%M')} (COL)  ·  {total} viajes registrados",
+            S_SUBTITLE
+        ),
+    ]]
+    header_tbl = Table(header_data, colWidths=[PAGE_W * 0.65, PAGE_W * 0.35])
+    header_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), C_DARK),
+        ("TOPPADDING",    (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+        ("LEFTPADDING",   (0,0), (-1,-1), 14),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 14),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("LINEBELOW",     (0,0), (-1,-1), 2.5, C_ACCENT),
     ]))
-    story.append(titulo_tbl)
-    story.append(Spacer(1, 0.35*cm))
-
-    # ---- KPIs ----
-    ancho_k = PAGE_W / 6
-    kpi_vals = [
-        (str(len(df)),    "TOTAL VIAJES",   C_ALT),
-        (str(completados),"COMPLETADOS",    C_COMP),
-        (str(anulados),   "ANULADOS",       C_ANUL),
-        (str(incumplidos),"INCUMPLIDOS",    C_INCUMP),
-        (str(en_curso),   "EN CURSO",       C_CURSO),
-        (f"{pct}%",       "% CUMPLIMIENTO", colors.HexColor("#E8DAEF")),
-    ]
-    kpi_row1 = [Paragraph(v, st_kpi_v) for v, _, _ in kpi_vals]
-    kpi_row2 = [Paragraph(l, st_kpi_l) for _, l, _ in kpi_vals]
-    kpi_tbl  = Table([kpi_row1, kpi_row2], colWidths=[ancho_k]*6,
-                     rowHeights=[1.0*cm, 0.4*cm])
-    kpi_style = [
-        ("TOPPADDING",   (0,0),(-1,-1), 4),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 4),
-        ("LEFTPADDING",  (0,0),(-1,-1), 2),
-        ("RIGHTPADDING", (0,0),(-1,-1), 2),
-        ("LINEAFTER",    (0,0),(4,-1), 0.5, colors.HexColor("#CCCCCC")),
-        ("BOX",          (0,0),(-1,-1), 0.5, colors.HexColor("#CCCCCC")),
-    ]
-    for i, (_, _, bg) in enumerate(kpi_vals):
-        kpi_style.append(("BACKGROUND", (i,0),(i,-1), bg))
-    kpi_tbl.setStyle(TableStyle(kpi_style))
-    story.append(kpi_tbl)
+    story.append(header_tbl)
     story.append(Spacer(1, 0.4*cm))
 
-    # ---- SECCIÓN VIAJES ----
-    sec_hdr = Table(
-        [[Paragraph("  DETALLE DE VIAJES", st_sec)]],
-        colWidths=[PAGE_W]
-    )
-    sec_hdr.setStyle(TableStyle([
-        ("BACKGROUND",   (0,0),(-1,-1), C_HEADER),
-        ("TOPPADDING",   (0,0),(-1,-1), 5),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 5),
-    ]))
-    story.append(sec_hdr)
-    story.append(Spacer(1, 0.15*cm))
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 2 — KPIs
+    # ═══════════════════════════════════════════════════════════════════
+    story.append(sec_header("▌ RESUMEN EJECUTIVO"))
+    story.append(Spacer(1, 0.2*cm))
 
-    # Columnas de la tabla principal
-    cols_pdf = [
-        ("fecha",                 "FECHA",        1.8*cm),
-        ("placa",                 "PLACA",        1.6*cm),
-        ("conductor",             "CONDUCTOR",    3.8*cm),
-        ("cliente",               "CLIENTE",      3.0*cm),
-        ("origen",                "ORIGEN",       2.8*cm),
-        ("destino",               "DESTINO",      2.8*cm),
-        ("hora_cita_cargue",      "CITA C.",      1.5*cm),
-        ("hora_salida_cargue",    "SAL. C.",      1.5*cm),
-        ("hora_llegada_descargue","LLEG. D.",     1.5*cm),
-        ("hora_salida_descargue", "SAL. D.",      1.5*cm),
-        ("contenedor",            "CONTENEDOR",   2.5*cm),
-        ("estado",                "ESTADO",       2.0*cm),
+    AK = PAGE_W / 6
+    kpis = [
+        (str(total), "TOTAL VIAJES",    C_LIGHT),
+        (str(comp),  "COMPLETADOS",     C_R_COMP),
+        (str(anul),  "ANULADOS",        C_R_ANUL),
+        (str(incu),  "INCUMPLIDOS",     C_R_INCU),
+        (str(curso), "EN CURSO",        C_R_CURS),
+        (f"{pct}%",  "CUMPLIMIENTO",    C_LIGHT),
     ]
-    col_widths = [w for _, _, w in cols_pdf]
+    badge_colors = [C_MID, C_K_COMP, C_K_ANUL, C_K_INCU, C_K_CURS, C_MID]
 
-    # Encabezado tabla
-    header_row = [Paragraph(n, st_hdr) for _, n, _ in cols_pdf]
+    kpi_row_val = [Paragraph(v, S_KPI_V) for v, _, _ in kpis]
+    kpi_row_lbl = [Paragraph(l, S_KPI_L) for _, l, _ in kpis]
 
-    # Colores de estado para filas
-    def color_estado(estado_val):
-        if "Anulado"    in str(estado_val): return C_ANUL
-        if "Incumplido" in str(estado_val): return C_INCUMP
-        if "En Curso"   in str(estado_val): return C_CURSO
-        if "Completado" in str(estado_val): return C_COMP
-        return None
+    kpi_tbl = Table(
+        [kpi_row_val, kpi_row_lbl],
+        colWidths=[AK] * 6,
+        rowHeights=[1.1*cm, 0.4*cm]
+    )
+    kpi_style = [
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("BOX",           (0,0), (-1,-1), 0.5, C_BORDER),
+    ]
+    for i, ((_, _, bg), bc) in enumerate(zip(kpis, badge_colors)):
+        kpi_style.append(("BACKGROUND", (i,0), (i,-1), bg))
+        kpi_style.append(("LINEABOVE",  (i,0), (i,0),  3, bc))
+        if i < 5:
+            kpi_style.append(("LINEAFTER", (i,0), (i,-1), 0.5, C_BORDER))
+    kpi_tbl.setStyle(TableStyle(kpi_style))
 
-    data_rows = [header_row]
-    row_colors = []  # (row_idx, color)
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 0.5*cm))
+
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 3 — TABLA DE VIAJES
+    # ═══════════════════════════════════════════════════════════════════
+    story.append(sec_header("▌ DETALLE DE VIAJES", f"{total} registros"))
+    story.append(Spacer(1, 0.2*cm))
+
+    cols_pdf = [
+        ("fecha",                  "FECHA",      1.7*cm),
+        ("placa",                  "PLACA",      1.5*cm),
+        ("conductor",              "CONDUCTOR",  3.6*cm),
+        ("cliente",                "CLIENTE",    2.8*cm),
+        ("origen",                 "ORIGEN",     2.6*cm),
+        ("destino",                "DESTINO",    2.6*cm),
+        ("hora_cita_cargue",       "CITA",       1.4*cm),
+        ("hora_salida_cargue",     "SAL.C.",     1.4*cm),
+        ("hora_llegada_descargue", "LLEG.",      1.4*cm),
+        ("hora_salida_descargue",  "SAL.D.",     1.4*cm),
+        ("contenedor",             "CONTENEDOR", 2.4*cm),
+        ("estado",                 "ESTADO",     2.0*cm),
+    ]
+    col_w = [w for _, _, w in cols_pdf]
+
+    hdr_row = [Paragraph(n, S_HDR) for _, n, _ in cols_pdf]
+
+    def row_bg(estado_val, idx):
+        if "Anulado"    in str(estado_val): return C_R_ANUL
+        if "Incumplido" in str(estado_val): return C_R_INCU
+        if "En Curso"   in str(estado_val): return C_R_CURS
+        if "Completado" in str(estado_val): return C_R_COMP
+        return C_LIGHT if idx % 2 == 0 else C_WHITE
+
+    data_rows  = [hdr_row]
+    row_colors = []
 
     for ri, (_, fila) in enumerate(df.iterrows()):
         est = str(fila.get("estado", ""))
-        bg  = color_estado(est)
-        if bg is None and ri % 2 == 0:
-            bg = C_ALT
-        if bg:
-            row_colors.append((ri + 1, bg))  # +1 por encabezado
-
+        bg  = row_bg(est, ri)
+        row_colors.append((ri + 1, bg))
         row = []
         for key, _, _ in cols_pdf:
             val = fila.get(key, "")
             if not isinstance(val, str) and pd.isna(val): val = ""
-            if key.startswith("hora_") and val:
-                val = str(val)[:5]
+            if key.startswith("hora_") and val: val = str(val)[:5]
             val = str(val) if val != "" else ""
             centered = key in ("fecha","placa","estado") or key.startswith("hora_")
-            row.append(Paragraph(val, st_cel_c if centered else st_cel))
+            row.append(Paragraph(val, S_CELL_C if centered else S_CELL))
         data_rows.append(row)
 
-    main_table = Table(data_rows, colWidths=col_widths, repeatRows=1)
-
+    main_tbl = Table(data_rows, colWidths=col_w, repeatRows=1)
     tbl_style = [
-        # Encabezado
-        ("BACKGROUND",   (0,0),(-1,0),  C_HEADER),
-        ("TEXTCOLOR",    (0,0),(-1,0),  C_WHITE),
-        ("ROWHEIGHT",    (0,0),(-1,0),  0.6*cm),
-        # Datos
-        ("FONTSIZE",     (0,1),(-1,-1), 6.5),
-        ("ROWHEIGHT",    (0,1),(-1,-1), 0.45*cm),
-        # Bordes
-        ("GRID",         (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
-        ("LINEBELOW",    (0,0),(-1,0),  0.8, C_DARK),
-        # Padding
-        ("TOPPADDING",   (0,0),(-1,-1), 2),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 2),
-        ("LEFTPADDING",  (0,0),(-1,-1), 3),
-        ("RIGHTPADDING", (0,0),(-1,-1), 3),
-        ("VALIGN",       (0,0),(-1,-1), "MIDDLE"),
+        ("BACKGROUND",    (0,0), (-1,0),  C_MID),
+        ("ROWHEIGHT",     (0,0), (-1,0),  0.65*cm),
+        ("ROWHEIGHT",     (0,1), (-1,-1), 0.44*cm),
+        ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
+        ("LINEBELOW",     (0,0), (-1,0),  1.5, C_ACCENT),
+        ("TOPPADDING",    (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("LEFTPADDING",   (0,0), (-1,-1), 3),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 3),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
     ]
     for ri, bg in row_colors:
-        tbl_style.append(("BACKGROUND", (0,ri),(-1,ri), bg))
+        tbl_style.append(("BACKGROUND", (0,ri), (-1,ri), bg))
+    main_tbl.setStyle(TableStyle(tbl_style))
+    story.append(main_tbl)
+    story.append(Spacer(1, 0.2*cm))
 
-    main_table.setStyle(TableStyle(tbl_style))
-    story.append(main_table)
-    story.append(Spacer(1, 0.3*cm))
-
-    # ---- FILA TOTALES ----
-    totales_data = [[
-        Paragraph(
-            f"TOTAL: {len(df)} viajes  |  "
-            f"Completados: {completados}  |  "
-            f"Anulados: {anulados}  |  "
-            f"Incumplidos: {incumplidos}  |  "
-            f"En Curso: {en_curso}  |  "
-            f"Cumplimiento: {pct}%",
-            st_tot
-        )
-    ]]
-    totales_tbl = Table(totales_data, colWidths=[PAGE_W])
-    totales_tbl.setStyle(TableStyle([
-        ("BACKGROUND",   (0,0),(-1,-1), C_TOTAL),
-        ("TOPPADDING",   (0,0),(-1,-1), 5),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 5),
-        ("LEFTPADDING",  (0,0),(-1,-1), 8),
-        ("BOX",          (0,0),(-1,-1), 0.5, colors.HexColor("#AAAAAA")),
+    # Fila resumen totales
+    totales_txt = (
+        f"TOTAL: {total} viajes   ·   "
+        f"Completados: {comp}   ·   "
+        f"Anulados: {anul}   ·   "
+        f"Incumplidos: {incu}   ·   "
+        f"En Curso: {curso}   ·   "
+        f"Cumplimiento: {pct}%"
+    )
+    tot_tbl = Table([[Paragraph(totales_txt, S_TOTAL)]], colWidths=[PAGE_W])
+    tot_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), C_LIGHT),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("BOX",           (0,0), (-1,-1), 0.5, C_BORDER),
+        ("LINEABOVE",     (0,0), (-1,-1), 1.5, C_MID),
     ]))
-    story.append(totales_tbl)
-    story.append(Spacer(1, 0.5*cm))
+    story.append(tot_tbl)
+    story.append(Spacer(1, 0.6*cm))
 
-    # ---- RESUMEN POR CLIENTE ----
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 4 — CLIENTES & PLACAS (lado a lado)
+    # ═══════════════════════════════════════════════════════════════════
     if "cliente" in df.columns and df["cliente"].notna().any():
-        story.append(Table(
-            [[Paragraph("  VIAJES POR CLIENTE", st_sec)]],
-            colWidths=[PAGE_W]
-        ))
-        story[-1].setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,-1),C_HEADER),
-            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-        ]))
-        story.append(Spacer(1, 0.15*cm))
+        half = (PAGE_W - 0.4*cm) / 2
 
-        por_cli = df.groupby("cliente").size().reset_index(name="v").sort_values("v", ascending=False)
-        ancho_c = PAGE_W / 2
-        cli_data = [[Paragraph("CLIENTE", st_hdr), Paragraph("VIAJES", st_hdr)]]
+        # Tabla clientes
+        por_cli = (
+            df.groupby("cliente")
+            .agg(viajes=("cliente","count"),
+                 comp_c=("estado", lambda x: x.str.contains("Completado", na=False).sum()))
+            .reset_index()
+            .sort_values("viajes", ascending=False)
+        )
+        cli_hdr  = [Paragraph(h, S_HDR) for h in ["CLIENTE","VIAJES","COMPL."]]
+        cli_data = [cli_hdr]
         for i, r in enumerate(por_cli.itertuples()):
-            bg = C_ALT if i % 2 == 0 else C_WHITE
+            pct_c = f"{round(r.comp_c/r.viajes*100)}%" if r.viajes > 0 else "—"
             cli_data.append([
-                Paragraph(str(r.cliente), st_cel),
-                Paragraph(str(int(r.v)), st_cel_c),
+                Paragraph(str(r.cliente), S_CELL),
+                Paragraph(str(r.viajes),  S_CELL_C),
+                Paragraph(pct_c,          S_CELL_C),
             ])
-        cli_tbl = Table(cli_data, colWidths=[ancho_c*1.6, ancho_c*0.4])
-        cli_style = [
-            ("BACKGROUND",   (0,0),(-1,0),  C_HEADER),
-            ("GRID",         (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
-            ("TOPPADDING",   (0,0),(-1,-1), 2),
-            ("BOTTOMPADDING",(0,0),(-1,-1), 2),
-            ("LEFTPADDING",  (0,0),(-1,-1), 4),
+        cli_tbl = Table(cli_data, colWidths=[half*0.65, half*0.18, half*0.17])
+        cli_sty = [
+            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
+            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
+            ("TOPPADDING",    (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+            ("LEFTPADDING",   (0,0), (-1,-1), 4),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
         ]
         for i in range(1, len(cli_data)):
-            bg = C_ALT if (i-1) % 2 == 0 else C_WHITE
-            cli_style.append(("BACKGROUND",(0,i),(-1,i), bg))
-        cli_tbl.setStyle(TableStyle(cli_style))
-        story.append(cli_tbl)
-        story.append(Spacer(1, 0.5*cm))
+            cli_sty.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
+        cli_tbl.setStyle(TableStyle(cli_sty))
 
-    # ---- RANKING DE CONDUCTORES ----
-    if "conductor" in df.columns:
-        story.append(Table(
-            [[Paragraph("  RANKING DE CONDUCTORES", st_sec)]],
-            colWidths=[PAGE_W]
-        ))
-        story[-1].setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,-1),C_HEADER),
-            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-        ]))
-        story.append(Spacer(1, 0.15*cm))
-
-        df_c = df.groupby("conductor").agg(
-            total=("conductor","count"),
-            comp=("estado",  lambda x: x.str.contains("Completado", na=False).sum()),
-            anul=("estado",  lambda x: x.str.contains("Anulado",    na=False).sum()),
-            incu=("estado",  lambda x: x.str.contains("Incumplido", na=False).sum()),
-            curs=("estado",  lambda x: x.str.contains("En Curso",   na=False).sum()),
-        ).reset_index().sort_values("total", ascending=False)
-
-        hdrs_c = ["CONDUCTOR","TOTAL","COMPLET.","ANULADOS","INCUMPL.","EN CURSO","% CUMPL."]
-        aw = PAGE_W / 10
-        cw_c = [aw*4, aw, aw, aw, aw, aw, aw]
-        cond_data = [[Paragraph(h, st_hdr) for h in hdrs_c]]
-        for i, r in enumerate(df_c.itertuples()):
-            pct_c = f"{round(r.comp/r.total*100,1)}%" if r.total > 0 else "0%"
-            bg = C_ALT if i % 2 == 0 else C_WHITE
-            cond_data.append([
-                Paragraph(str(r.conductor), st_cel),
-                Paragraph(str(r.total),     st_cel_c),
-                Paragraph(str(r.comp),      st_cel_c),
-                Paragraph(str(r.anul),      st_cel_c),
-                Paragraph(str(r.incu),      st_cel_c),
-                Paragraph(str(r.curs),      st_cel_c),
-                Paragraph(pct_c,            st_cel_c),
+        # Tabla placas
+        por_placa = (
+            df.groupby("placa")
+            .agg(viajes=("placa","count"),
+                 comp_p=("estado", lambda x: x.str.contains("Completado", na=False).sum()))
+            .reset_index()
+            .sort_values("viajes", ascending=False)
+        )
+        placa_hdr  = [Paragraph(h, S_HDR) for h in ["PLACA","CONDUCTOR","VIAJES","COMPL."]]
+        placa_data = [placa_hdr]
+        for i, r in enumerate(por_placa.itertuples()):
+            cond_n = PLACA_CONDUCTOR.get(str(r.placa), "—") or "—"
+            pct_p  = f"{round(r.comp_p/r.viajes*100)}%" if r.viajes > 0 else "—"
+            placa_data.append([
+                Paragraph(str(r.placa),  S_CELL_C),
+                Paragraph(str(cond_n),   S_CELL),
+                Paragraph(str(r.viajes), S_CELL_C),
+                Paragraph(pct_p,         S_CELL_C),
             ])
+        placa_tbl = Table(placa_data, colWidths=[half*0.18, half*0.52, half*0.16, half*0.14])
+        placa_sty = [
+            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
+            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
+            ("TOPPADDING",    (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+            ("LEFTPADDING",   (0,0), (-1,-1), 4),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ]
+        for i in range(1, len(placa_data)):
+            placa_sty.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
+        placa_tbl.setStyle(TableStyle(placa_sty))
+
+        story.append(sec_header("▌ CLIENTES  &  PLACAS"))
+        story.append(Spacer(1, 0.2*cm))
+
+        sec_hdrs = Table(
+            [[Paragraph("  VIAJES POR CLIENTE", S_SEC_TITLE),
+              Paragraph(""),
+              Paragraph("  VIAJES POR PLACA", S_SEC_TITLE)]],
+            colWidths=[half, 0.4*cm, half]
+        )
+        sec_hdrs.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (0,0),  C_MID),
+            ("BACKGROUND",    (2,0), (2,0),  C_MID),
+            ("BACKGROUND",    (1,0), (1,0),  C_WHITE),
+            ("TOPPADDING",    (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+        ]))
+        story.append(sec_hdrs)
+        story.append(Spacer(1, 0.1*cm))
+
+        side_tbl = Table(
+            [[cli_tbl, Spacer(0.4*cm, 1), placa_tbl]],
+            colWidths=[half, 0.4*cm, half]
+        )
+        side_tbl.setStyle(TableStyle([
+            ("VALIGN",        (0,0), (-1,-1), "TOP"),
+            ("LEFTPADDING",   (0,0), (-1,-1), 0),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+            ("TOPPADDING",    (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ]))
+        story.append(side_tbl)
+        story.append(Spacer(1, 0.6*cm))
+
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 5 — RANKING DE CONDUCTORES
+    # ═══════════════════════════════════════════════════════════════════
+    if "conductor" in df.columns:
+        story.append(sec_header("▌ RANKING DE CONDUCTORES"))
+        story.append(Spacer(1, 0.2*cm))
+
+        df_c = (
+            df.groupby("conductor")
+            .agg(
+                total=("conductor","count"),
+                comp =("estado", lambda x: x.str.contains("Completado", na=False).sum()),
+                anul =("estado", lambda x: x.str.contains("Anulado",    na=False).sum()),
+                incu =("estado", lambda x: x.str.contains("Incumplido", na=False).sum()),
+                curs =("estado", lambda x: x.str.contains("En Curso",   na=False).sum()),
+            )
+            .reset_index()
+            .sort_values("total", ascending=False)
+        )
+
+        hdrs_c = ["#","CONDUCTOR","TOTAL","COMPL.","ANUL.","INCUMP.","CURSO","% CUMPL.","BARRA"]
+        aw = PAGE_W / 10
+        cw_c = [aw*0.5, aw*3.8, aw*0.7, aw*0.8, aw*0.8, aw*0.8, aw*0.8, aw*0.8, aw*1.5]
+
+        cond_data = [[Paragraph(h, S_HDR) for h in hdrs_c]]
+        for idx, r in enumerate(df_c.itertuples()):
+            pct_c  = round(r.comp / r.total * 100) if r.total > 0 else 0
+            filled = int(pct_c / 10)
+            bar_str = "█" * filled + "░" * (10 - filled)
+            cond_data.append([
+                Paragraph(str(idx+1),       S_CELL_SM),
+                Paragraph(str(r.conductor), S_CELL),
+                Paragraph(str(r.total),     S_CELL_C),
+                Paragraph(str(r.comp),      S_CELL_C),
+                Paragraph(str(r.anul),      S_CELL_C),
+                Paragraph(str(r.incu),      S_CELL_C),
+                Paragraph(str(r.curs),      S_CELL_C),
+                Paragraph(f"{pct_c}%",      S_CELL_C),
+                Paragraph(bar_str,          S_NOTE),
+            ])
+
         cond_tbl = Table(cond_data, colWidths=cw_c)
         cond_style = [
-            ("BACKGROUND",   (0,0),(-1,0),  C_HEADER),
-            ("GRID",         (0,0),(-1,-1), 0.3, colors.HexColor("#CCCCCC")),
-            ("TOPPADDING",   (0,0),(-1,-1), 2),
-            ("BOTTOMPADDING",(0,0),(-1,-1), 2),
-            ("LEFTPADDING",  (0,0),(-1,-1), 4),
+            ("BACKGROUND",    (0,0), (-1,0),  C_MID),
+            ("GRID",          (0,0), (-1,-1), 0.25, C_BORDER),
+            ("LINEBELOW",     (0,0), (-1,0),  1.2, C_ACCENT),
+            ("TOPPADDING",    (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+            ("LEFTPADDING",   (0,0), (-1,-1), 4),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 4),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
         ]
         for i in range(1, len(cond_data)):
-            bg = C_ALT if (i-1) % 2 == 0 else C_WHITE
-            cond_style.append(("BACKGROUND",(0,i),(-1,i), bg))
+            cond_style.append(("BACKGROUND", (0,i), (-1,i), C_LIGHT if (i-1)%2==0 else C_WHITE))
         cond_tbl.setStyle(TableStyle(cond_style))
         story.append(cond_tbl)
+        story.append(Spacer(1, 0.6*cm))
 
-    # ---- PIE DE PÁGINA (función) ----
+    # ═══════════════════════════════════════════════════════════════════
+    # SECCIÓN 6 — TIEMPOS PROMEDIO
+    # ═══════════════════════════════════════════════════════════════════
+    story.append(sec_header("▌ ANÁLISIS DE TIEMPOS PROMEDIO"))
+    story.append(Spacer(1, 0.2*cm))
+
+    tiempos_rows = []
+    for _, r in df.iterrows():
+        t_esp = calcular_duracion(r.get("hora_cita_cargue"),       r.get("hora_salida_cargue"))
+        t_tra = calcular_duracion(r.get("hora_salida_cargue"),     r.get("hora_llegada_descargue"))
+        t_des = calcular_duracion(r.get("hora_llegada_descargue"), r.get("hora_salida_descargue"))
+        t_tot = (t_esp or 0)+(t_tra or 0)+(t_des or 0) if all(x is not None for x in [t_esp,t_tra,t_des]) else None
+        tiempos_rows.append((t_esp, t_tra, t_des, t_tot))
+
+    def prom_min(vals):
+        v = [x for x in vals if x is not None]
+        return sum(v)/len(v) if v else None
+
+    t_e_p = prom_min([r[0] for r in tiempos_rows])
+    t_t_p = prom_min([r[1] for r in tiempos_rows])
+    t_d_p = prom_min([r[2] for r in tiempos_rows])
+    t_o_p = prom_min([r[3] for r in tiempos_rows])
+
+    S_T_V = ps("tv", size=14, color=C_MID, align=1, bold=True)
+    S_T_L = ps("tl", size=6,  color=C_MUTED, align=1)
+
+    AT = PAGE_W / 4
+    tiempo_row_v = [Paragraph(mins_a_str(x), S_T_V) for x in [t_e_p, t_t_p, t_d_p, t_o_p]]
+    tiempo_row_l = [Paragraph(l, S_T_L) for l in [
+        "ESPERA EN CARGUE", "TRÁNSITO", "DESCARGUE", "OPERACIÓN TOTAL"
+    ]]
+    tiempo_tbl = Table([tiempo_row_v, tiempo_row_l], colWidths=[AT]*4, rowHeights=[0.9*cm, 0.35*cm])
+    tiempo_style = [
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("BOX",           (0,0), (-1,-1), 0.5, C_BORDER),
+        ("LINEABOVE",     (0,0), (-1,0),  2.5, C_MID),
+    ]
+    for i in range(4):
+        tiempo_style.append(("BACKGROUND", (i,0), (i,-1), C_LIGHT if i%2==0 else C_WHITE))
+        if i < 3:
+            tiempo_style.append(("LINEAFTER", (i,0), (i,-1), 0.5, C_BORDER))
+    tiempo_tbl.setStyle(TableStyle(tiempo_style))
+    story.append(tiempo_tbl)
+
+    # ─── PIE DE PÁGINA ────────────────────────────────────────────────
     def pie_pagina(canvas, doc):
         canvas.saveState()
-        canvas.setFont("Helvetica", 6)
-        canvas.setFillColor(colors.HexColor("#888888"))
-        canvas.drawString(1*cm, 0.7*cm,
-            f"Control de Viajes  |  {titulo}  |  {now_col.strftime('%d/%m/%Y %H:%M')} COL")
-        canvas.drawRightString(
-            landscape(A4)[0] - 1*cm, 0.7*cm,
-            f"Pag. {doc.page}"
-        )
+        w = landscape(A4)[0]
+        canvas.setStrokeColor(C_BORDER)
+        canvas.setLineWidth(0.5)
+        canvas.line(1.2*cm, 1.1*cm, w - 1.2*cm, 1.1*cm)
+        canvas.setFont("Helvetica", 5.5)
+        canvas.setFillColor(C_MUTED)
+        canvas.drawString(1.2*cm, 0.75*cm,
+            f"Control de Viajes  ·  {titulo}  ·  {now_col.strftime('%d/%m/%Y %H:%M')} COL")
+        canvas.drawRightString(w - 1.2*cm, 0.75*cm, f"Página {doc.page}")
+        canvas.setFillColor(C_ACCENT)
+        canvas.rect(1.2*cm, 1.1*cm, 1.5*cm, 0.15*cm, fill=1, stroke=0)
         canvas.restoreState()
 
     doc.build(story, onFirstPage=pie_pagina, onLaterPages=pie_pagina)
@@ -1075,7 +1227,6 @@ def main():
 
             st.divider()
 
-            # ---- Botones de descarga ----
             col_nom, col_xl, col_pdf = st.columns([2, 2, 2])
             with col_nom:
                 nombre_rep = st.text_input("Nombre del reporte", value="Control_Viajes", key="rep_nombre")
@@ -1324,9 +1475,9 @@ def main():
                 st.markdown("#### ⏱️ Tiempos Promedio de Operación")
                 tiempos = []
                 for _, r in df_s.iterrows():
-                    t_cargue   = calcular_duracion(r["hora_cita_cargue"],        r["hora_salida_cargue"])
-                    t_transito = calcular_duracion(r["hora_salida_cargue"],      r["hora_llegada_descargue"])
-                    t_descargue= calcular_duracion(r["hora_llegada_descargue"],  r["hora_salida_descargue"])
+                    t_cargue    = calcular_duracion(r["hora_cita_cargue"],       r["hora_salida_cargue"])
+                    t_transito  = calcular_duracion(r["hora_salida_cargue"],     r["hora_llegada_descargue"])
+                    t_descargue = calcular_duracion(r["hora_llegada_descargue"], r["hora_salida_descargue"])
                     tiempos.append({"espera_cargue": t_cargue, "transito": t_transito, "descargue": t_descargue})
                 df_t = pd.DataFrame(tiempos)
                 prom = {
