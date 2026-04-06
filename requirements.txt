@@ -5,3 +5,4 @@ pillow
 plotly
 openpyxl
 pytz
+reportlab
