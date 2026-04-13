@@ -20,7 +20,6 @@ st.set_page_config(
 SUPABASE_DB_URL = "postgresql://postgres.hhzuggxvdzzfmnvfulmp:Negritasantia@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
 
 # ==================== CATÁLOGO PLACAS / CONDUCTORES ====================
-# Placa -> conductor fijo (None = no tiene fijo, se elige manualmente)
 PLACA_CONDUCTOR = {
     "NOX459": "HABID CAMACHO",
     "NOX460": "JOSE ORTEGA PEREZ",
@@ -343,7 +342,6 @@ class DB:
         finally: c.close()
 
     def stats_dashboard(self, fecha_ini, fecha_fin):
-        """Retorna datos agregados para el dashboard"""
         c = self.conn()
         try:
             df = pd.read_sql("""
@@ -357,6 +355,33 @@ class DB:
             return df
         except: return pd.DataFrame()
         finally: c.close()
+
+
+# ==================== HELPERS ====================
+def hora_a_time(val):
+    if val is None or (isinstance(val, float) and pd.isna(val)): return None
+    if isinstance(val, time): return val
+    try:
+        s = str(val)[:5]; h, m = s.split(":"); return time(int(h), int(m))
+    except: return None
+
+def str_hora(val):
+    t = hora_a_time(val)
+    return t.strftime("%H:%M") if t else "—"
+
+def calcular_duracion(h_ini, h_fin):
+    t1 = hora_a_time(h_ini); t2 = hora_a_time(h_fin)
+    if not t1 or not t2: return None
+    d1 = timedelta(hours=t1.hour, minutes=t1.minute)
+    d2 = timedelta(hours=t2.hour, minutes=t2.minute)
+    diff = d2 - d1
+    if diff.total_seconds() < 0: diff += timedelta(days=1)
+    return int(diff.total_seconds() / 60)
+
+def mins_a_str(mins):
+    if mins is None: return "—"
+    h, m = divmod(int(mins), 60)
+    return f"{h}h {m:02d}m"
 
 
 # ==================== EXCEL ====================
@@ -401,7 +426,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         ("numero_importacion_bl","IMP / BL",18), ("manifiesto","MANIFIESTO",12),
         ("observacion","OBSERVACIÓN",28), ("estado","ESTADO",14),
     ]
-    # Columnas extra de coordenadas (no vienen del df, se calculan)
     cols_coord = ["LAT. ORIGEN","LON. ORIGEN","LAT. DESTINO","LON. DESTINO"]
     total_cols = len(columnas) + len(cols_coord)
 
@@ -412,7 +436,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         cell.font = ft_header; cell.fill = fill_header
         cell.alignment = centro; cell.border = borde
         ws.column_dimensions[get_column_letter(idx)].width = ancho
-    # Headers coordenadas
     for i, nombre in enumerate(cols_coord, start=len(columnas)+1):
         cell = ws.cell(row=2, column=i, value=nombre)
         cell.font = ft_header
@@ -439,7 +462,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             cell.font = ft_anulado if es_an else (ft_incump if es_in else ft_normal)
             if fill_f: cell.fill = fill_f
 
-        # Coordenadas origen y destino
         origen_v  = str(fila.get("origen",  "") or "").strip().upper()
         destino_v = str(fila.get("destino", "") or "").strip().upper()
         lat_o, lon_o = COORDENADAS.get(origen_v,  (None, None))  if origen_v  in COORDENADAS else (None, None)
@@ -467,27 +489,23 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     ws2 = wb.create_sheet("Resumen")
 
     def hdr(ws, fila, col1, col2, texto):
-        # Sin merge_cells para evitar errores de Excel
         c = ws.cell(fila, col1, texto)
         c.font = ft_header
         c.fill = PatternFill("solid", start_color="203A43")
         c.alignment = centro
         c.border = borde
         ws.row_dimensions[fila].height = 20
-        # Rellenar celdas adyacentes del header con mismo color
         for col in range(col1+1, col2+1):
             cx = ws.cell(fila, col, "")
             cx.fill = PatternFill("solid", start_color="203A43")
             cx.border = borde
 
-    # Título
     ws2["A1"] = "Resumen General de Operaciones"
     ws2["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws2["A1"].fill = PatternFill("solid", start_color="0F2027")
     ws2["A1"].alignment = centro
     ws2.row_dimensions[1].height = 26
 
-    # --- KPIs generales (col A:B) ---
     hdr(ws2, 2, 1, 2, "RESUMEN GENERAL")
     en_curso = len(df[df["estado"].str.contains("En Curso", na=False)]) if "estado" in df.columns else 0
     kpis = [
@@ -507,7 +525,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             c1.fill = PatternFill("solid", start_color="EBF5FB")
             c2.fill = PatternFill("solid", start_color="EBF5FB")
 
-    # --- Por cliente (col D:E) ---
     if "cliente" in df.columns and df["cliente"].notna().any():
         hdr(ws2, 2, 4, 5, "VIAJES POR CLIENTE")
         por_cli = df.groupby("cliente").size().reset_index(name="v").sort_values("v", ascending=False)
@@ -520,7 +537,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
                 c1.fill = PatternFill("solid", start_color="EBF5FB")
                 c2.fill = PatternFill("solid", start_color="EBF5FB")
 
-    # --- Por placa (col G:H) ---
     if "placa" in df.columns:
         hdr(ws2, 2, 7, 8, "VIAJES POR PLACA")
         por_placa = df.groupby("placa").size().reset_index(name="v").sort_values("v", ascending=False)
@@ -536,23 +552,110 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
     for col_l, w in zip(["A","B","C","D","E","F","G","H"], [22,10,3,24,8,3,12,8]):
         ws2.column_dimensions[col_l].width = w
 
-    # ==================== HOJA CONDUCTORES ====================
+    # ==================== HOJA CONDUCTORES (con tiempos) ====================
     ws3 = wb.create_sheet("Conductores")
+
+    # Título
     ws3["A1"] = "Ranking de Conductores"
     ws3["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
     ws3["A1"].fill = PatternFill("solid", start_color="0F2027")
     ws3["A1"].alignment = centro
     ws3.row_dimensions[1].height = 26
 
-    hdrs3 = ["CONDUCTOR","TOTAL","COMPLET.","ANULADOS","INCUMPL.","EN CURSO","% CUMPL."]
-    for ci, h in enumerate(hdrs3, start=1):
+    # ---- Bloque 1: Ranking general (cols A-G) ----
+    hdrs3_general = [
+        "CONDUCTOR", "TOTAL", "COMPLET.", "ANULADOS", "INCUMPL.", "EN CURSO", "% CUMPL."
+    ]
+    fill_bloque1 = PatternFill("solid", start_color="203A43")
+    for ci, h in enumerate(hdrs3_general, start=1):
         c = ws3.cell(2, ci, h)
-        c.font = ft_header
-        c.fill = PatternFill("solid", start_color="203A43")
-        c.alignment = centro
-        c.border = borde
+        c.font = ft_header; c.fill = fill_bloque1
+        c.alignment = centro; c.border = borde
     ws3.row_dimensions[2].height = 20
 
+    # ---- Bloque 2: Tiempos promedio (cols I-M) ----
+    # Col H = separador visual
+    ws3.column_dimensions["H"].width = 2
+
+    hdrs3_tiempos = [
+        "CONDUCTOR",
+        "ESPERA CARGUE\n(prom.)",
+        "TRÁNSITO\n(prom.)",
+        "DESCARGUE\n(prom.)",
+        "TOTAL OP.\n(prom.)",
+    ]
+    fill_tiempos = PatternFill("solid", start_color="1A5276")
+    col_inicio_tiempos = 9  # columna I
+    for ci, h in enumerate(hdrs3_tiempos, start=col_inicio_tiempos):
+        c = ws3.cell(2, ci, h)
+        c.font = ft_header; c.fill = fill_tiempos
+        c.alignment = centro; c.border = borde
+    ws3.row_dimensions[2].height = 30
+
+    # ---- Bloque 3: Ranking MÁS lento (cols O-S) ----
+    ws3.column_dimensions[get_column_letter(col_inicio_tiempos + 5)].width = 2  # separador col N
+
+    col_inicio_lento = col_inicio_tiempos + 6  # columna O
+    hdrs3_lento = [
+        "🐢 MÁS LENTO EN...",
+        "ESPERA CARGUE",
+        "TRÁNSITO",
+        "DESCARGUE",
+        "TOTAL OPERACIÓN",
+    ]
+    fill_lento = PatternFill("solid", start_color="922B21")
+    for ci, h in enumerate(hdrs3_lento, start=col_inicio_lento):
+        c = ws3.cell(2, ci, h)
+        c.font = ft_header; c.fill = fill_lento
+        c.alignment = centro; c.border = borde
+
+    # ---- Bloque 4: Ranking MÁS rápido (cols U-Y) ----
+    ws3.column_dimensions[get_column_letter(col_inicio_lento + 5)].width = 2  # separador col T
+
+    col_inicio_rapido = col_inicio_lento + 6  # columna U
+    hdrs3_rapido = [
+        "⚡ MÁS RÁPIDO EN...",
+        "ESPERA CARGUE",
+        "TRÁNSITO",
+        "DESCARGUE",
+        "TOTAL OPERACIÓN",
+    ]
+    fill_rapido = PatternFill("solid", start_color="1E8449")
+    for ci, h in enumerate(hdrs3_rapido, start=col_inicio_rapido):
+        c = ws3.cell(2, ci, h)
+        c.font = ft_header; c.fill = fill_rapido
+        c.alignment = centro; c.border = borde
+
+    # ---- Calcular tiempos por conductor ----
+    tiempos_por_conductor = {}
+    if "conductor" in df.columns:
+        for conductor_nombre, grupo in df.groupby("conductor"):
+            if not conductor_nombre or str(conductor_nombre).strip() == "":
+                continue
+            esperas, transitos, descargues = [], [], []
+            for _, r in grupo.iterrows():
+                e = calcular_duracion(r.get("hora_cita_cargue"),       r.get("hora_salida_cargue"))
+                t = calcular_duracion(r.get("hora_salida_cargue"),     r.get("hora_llegada_descargue"))
+                d = calcular_duracion(r.get("hora_llegada_descargue"), r.get("hora_salida_descargue"))
+                if e is not None: esperas.append(e)
+                if t is not None: transitos.append(t)
+                if d is not None: descargues.append(d)
+
+            prom_e = sum(esperas)   / len(esperas)   if esperas   else None
+            prom_t = sum(transitos) / len(transitos) if transitos else None
+            prom_d = sum(descargues)/ len(descargues)if descargues else None
+            prom_tot = None
+            if prom_e is not None and prom_t is not None and prom_d is not None:
+                prom_tot = prom_e + prom_t + prom_d
+
+            tiempos_por_conductor[conductor_nombre] = {
+                "espera":   prom_e,
+                "transito": prom_t,
+                "descargue":prom_d,
+                "total":    prom_tot,
+            }
+
+    # ---- Llenar Bloque 1: Ranking general ----
     if "conductor" in df.columns:
         df_cond = df.groupby("conductor").agg(
             total=("conductor","count"),
@@ -572,8 +675,92 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
                 c.alignment = izq if ci == 1 else centro
                 if fill_c: c.fill = fill_c
 
-    for col_l, w in zip(["A","B","C","D","E","F","G"], [32,8,10,10,10,10,10]):
+    # ---- Llenar Bloque 2: Tiempos promedio por conductor ----
+    conductores_con_tiempos = sorted(tiempos_por_conductor.keys())
+    for i, cond in enumerate(conductores_con_tiempos, start=3):
+        t = tiempos_por_conductor[cond]
+        fill_c = PatternFill("solid", start_color="D6EAF8") if i % 2 == 0 else None
+        vals_t = [
+            cond,
+            mins_a_str(t["espera"]),
+            mins_a_str(t["transito"]),
+            mins_a_str(t["descargue"]),
+            mins_a_str(t["total"]),
+        ]
+        for ci, v in enumerate(vals_t, start=col_inicio_tiempos):
+            c = ws3.cell(i, ci, v)
+            c.font = ft_normal; c.border = borde
+            c.alignment = izq if ci == col_inicio_tiempos else centro
+            if fill_c: c.fill = fill_c
+
+    # ---- Calcular rankings MÁS LENTO y MÁS RÁPIDO por etapa ----
+    etapas = ["espera", "transito", "descargue", "total"]
+    etiquetas_etapas = ["ESPERA CARGUE", "TRÁNSITO", "DESCARGUE", "TOTAL OPERACIÓN"]
+
+    def ranking_etapa(tiempos_dict, etapa, ascendente=False):
+        """Retorna lista de (conductor, minutos) ordenada. ascendente=True → más rápido primero."""
+        datos = [
+            (cond, datos[etapa])
+            for cond, datos in tiempos_dict.items()
+            if datos[etapa] is not None
+        ]
+        datos.sort(key=lambda x: x[1], reverse=not ascendente)
+        return datos
+
+    # Llenar bloque MÁS LENTO (col O en adelante)
+    # Fila 3 = encabezado de etiquetas de etapa, datos desde fila 4
+    max_filas = max(len(tiempos_por_conductor), 1)
+
+    for etapa_idx, (etapa, etiqueta) in enumerate(zip(etapas, etiquetas_etapas)):
+        col_etapa = col_inicio_lento + 1 + etapa_idx  # cols P, Q, R, S
+
+        ranking_lento  = ranking_etapa(tiempos_por_conductor, etapa, ascendente=False)
+        ranking_rapido = ranking_etapa(tiempos_por_conductor, etapa, ascendente=True)
+
+        for fila_idx, (cond, mins) in enumerate(ranking_lento, start=3):
+            # Conductor
+            c_nombre = ws3.cell(fila_idx, col_inicio_lento, cond)
+            c_nombre.font = ft_normal; c_nombre.border = borde; c_nombre.alignment = izq
+            fill_l = PatternFill("solid", start_color="FADBD8") if fila_idx % 2 == 0 else None
+            if fill_l: c_nombre.fill = fill_l
+
+            c_val = ws3.cell(fila_idx, col_etapa, mins_a_str(mins))
+            c_val.font = ft_normal; c_val.border = borde; c_val.alignment = centro
+            # Destacar el más lento (#1) en rojo fuerte
+            if fila_idx == 3:
+                c_val.font = Font(name="Calibri", bold=True, size=10, color="C0392B")
+                c_nombre.font = Font(name="Calibri", bold=True, size=10, color="C0392B")
+            elif fill_l:
+                c_val.fill = fill_l; c_nombre.fill = fill_l
+
+        for fila_idx, (cond, mins) in enumerate(ranking_rapido, start=3):
+            c_nombre = ws3.cell(fila_idx, col_inicio_rapido, cond)
+            c_nombre.font = ft_normal; c_nombre.border = borde; c_nombre.alignment = izq
+            fill_r = PatternFill("solid", start_color="D5F5E3") if fila_idx % 2 == 0 else None
+            if fill_r: c_nombre.fill = fill_r
+
+            c_val = ws3.cell(fila_idx, col_inicio_rapido + 1 + etapa_idx, mins_a_str(mins))
+            c_val.font = ft_normal; c_val.border = borde; c_val.alignment = centro
+            # Destacar el más rápido (#1) en verde fuerte
+            if fila_idx == 3:
+                c_val.font = Font(name="Calibri", bold=True, size=10, color="1E8449")
+                c_nombre.font = Font(name="Calibri", bold=True, size=10, color="1E8449")
+            elif fill_r:
+                c_val.fill = fill_r; c_nombre.fill = fill_r
+
+    # ---- Anchos de columnas hoja Conductores ----
+    anchos_ws3 = {
+        "A": 32, "B": 8, "C": 10, "D": 10, "E": 10, "F": 10, "G": 10,
+        "H": 2,   # separador
+        "I": 32, "J": 16, "K": 16, "L": 16, "M": 16,
+        "N": 2,   # separador
+        "O": 30, "P": 16, "Q": 16, "R": 16, "S": 16,
+        "T": 2,   # separador
+        "U": 30, "V": 16, "W": 16, "X": 16, "Y": 16,
+    }
+    for col_l, w in anchos_ws3.items():
         ws3.column_dimensions[col_l].width = w
+
     ws3.freeze_panes = "A3"
 
     # ==================== HOJA TIEMPOS ====================
@@ -626,7 +813,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
             c.alignment = izq if ci in (1,2,3,4) else centro
             if fill_t: c.fill = fill_t
 
-    # Fila promedios
     fila_prom = len(df) + 3
     cp = ws4.cell(fila_prom, 1, "PROMEDIO")
     cp.font = ft_total; cp.fill = fill_total; cp.alignment = centro; cp.border = borde
@@ -664,7 +850,6 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         pie.set_categories(labels)
         pie.width = 15; pie.height = 12
 
-        # Colores: verde, rojo, naranja, azul
         colores = ["2ECC71","E74C3C","F39C12","3498DB"]
         for idx, color in enumerate(colores):
             pt = DataPoint(idx=idx)
@@ -675,40 +860,12 @@ def generar_excel(df: pd.DataFrame, titulo: str = "Control de Viajes") -> bytes:
         for col_l, w in zip(["A","B"], [16, 10]):
             ws5.column_dimensions[col_l].width = w
     except Exception:
-        pass  # Si falla la grafica no rompe el archivo
+        pass
 
     ws.freeze_panes = "A3"
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
-
-
-# ==================== HELPERS ====================
-def hora_a_time(val):
-    if val is None or (isinstance(val, float) and pd.isna(val)): return None
-    if isinstance(val, time): return val
-    try:
-        s = str(val)[:5]; h, m = s.split(":"); return time(int(h), int(m))
-    except: return None
-
-def str_hora(val):
-    t = hora_a_time(val)
-    return t.strftime("%H:%M") if t else "—"
-
-def calcular_duracion(h_ini, h_fin):
-    """Calcula minutos entre dos horas (puede cruzar medianoche)"""
-    t1 = hora_a_time(h_ini); t2 = hora_a_time(h_fin)
-    if not t1 or not t2: return None
-    d1 = timedelta(hours=t1.hour, minutes=t1.minute)
-    d2 = timedelta(hours=t2.hour, minutes=t2.minute)
-    diff = d2 - d1
-    if diff.total_seconds() < 0: diff += timedelta(days=1)
-    return int(diff.total_seconds() / 60)
-
-def mins_a_str(mins):
-    if mins is None: return "—"
-    h, m = divmod(int(mins), 60)
-    return f"{h}h {m:02d}m"
 
 
 # ==================== MAIN ====================
@@ -735,7 +892,6 @@ def main():
     with tab1:
         st.markdown("### Registrar Nuevo Viaje")
 
-        # Selectores fuera del form para reactividad
         f1, f2, f3, f4 = st.columns(4)
         with f1:
             fecha_pre = st.date_input("📅 Fecha", datetime.now(), key="pre_fecha")
@@ -775,7 +931,6 @@ def main():
             cliente = cliente_pre
             origen = origen_pre
             destino = destino_pre
-
 
             st.markdown("#### ⏱️ Tiempos de Operación")
             h1, h2, h3, h4 = st.columns(4)
@@ -1006,7 +1161,6 @@ def main():
                 st.info("No hay datos en este período.")
                 return
 
-            # ---- KPIs principales ----
             total = len(df_s)
             comp  = len(df_s[df_s["estado"].str.contains("Completado", na=False)])
             anul  = len(df_s[df_s["estado"].str.contains("Anulado",    na=False)])
@@ -1023,7 +1177,6 @@ def main():
 
             st.divider()
 
-            # ---- Fila 1: Estado + Viajes por día ----
             g1, g2 = st.columns(2)
 
             with g1:
@@ -1052,7 +1205,6 @@ def main():
 
             st.divider()
 
-            # ---- Fila 2: Por cliente + Por placa ----
             g3, g4 = st.columns(2)
 
             with g3:
@@ -1082,7 +1234,6 @@ def main():
 
             st.divider()
 
-            # ---- Fila 3: Tiempos promedio + Ranking semanal ----
             g5, g6 = st.columns(2)
 
             with g5:
@@ -1136,7 +1287,6 @@ def main():
 
             st.divider()
 
-            # ---- Tabla ranking conductores ----
             st.markdown("#### 🏆 Ranking de Conductores")
             df_cond = df_s[df_s["conductor"].notna() & (df_s["conductor"].str.strip() != "")].groupby("conductor").agg(
                 viajes=("conductor", "count"),
