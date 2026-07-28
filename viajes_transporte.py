@@ -3,86 +3,6 @@ Sistema de Programación de Rutas y Cálculo de Costos para Tractomulas
 Versión 4.12 - Conectado a Supabase (PostgreSQL) - ACTUALIZADO
 Contexto: Colombia
 Autor: Sistema de Gestión de Transporte de Carga
-
-CAMBIOS EN ESTA VERSIÓN (v4.6 - FLUIDEZ DE NAVEGACIÓN Y LISTAS):
-- CORREGIDO: la navegación por pestañas (radio superior) ahora usa
-  on_change con un callback en vez de reasignar st.session_state.tab_actual
-  en la misma línea donde se crea el widget. Esto evita que haya que hacer
-  clic dos veces para que el contenido de la pestaña cambie.
-- NUEVO: las listas de Tractomulas, Conductores y Rutas ahora se cargan con
-  funciones envueltas en @st.cache_data (TTL 30s), y se invalida el cache
-  explícitamente (.clear()) justo después de guardar/eliminar cualquiera de
-  ellas. Antes se releían de la base de datos en cada rerun sin cache,
-  sumando latencia de red a cada clic (incluido el propio cambio de pestaña).
-- NUEVO: los combos "Filtrar / Buscar" de Trazabilidad (Tab 6), Acumulado
-  por Flota (Tab 7) y Liquidaciones (Tab 8) ahora guardan y reutilizan el
-  resultado en session_state de forma explícita en vez de mezclar la
-  condición del botón con "not in session_state", evitando que el resultado
-  visible quede un rerun "atrasado" respecto al filtro que se ve en pantalla.
-
-CAMBIOS EN ESTA VERSIÓN (v4.7 - CONTEO REAL DE VIAJES POR numero_viajes):
-- CORREGIDO: en Dashboard, Estadísticas Generales, Trazabilidad y
-  Liquidaciones, el conteo de "cuántos viajes hizo" un conductor/tractomula/
-  ruta ahora SUMA el campo numero_viajes de cada registro, en vez de contar
-  filas (COUNT(*) / len(df)). Esto aplica para CUALQUIER cliente, no solo
-  AGOFER: si registras un solo viaje con Número de Viajes = 3, ahora cuenta
-  como 3 viajes en todos los reportes, no como 1.
-
-CAMBIOS EN ESTA VERSIÓN (v4.8 - DÍAS SIN VIAJE):
-- NUEVO: en la pestaña "4. Cálculo de Viaje" se agregó un checkbox
-  "🚫 Día vacío (el carro NO hizo viaje este día)". Al activarlo se oculta
-  todo el formulario de cálculo de costos y solo se guarda un registro
-  simple (fecha, placa, conductor opcional, motivo, observaciones) en la
-  nueva tabla `dias_sin_viaje`. NO se calcula ni se guarda ningún costo,
-  gasto, flete ni utilidad para estos registros — son solo para
-  trazabilidad/historial.
-- NUEVO: en la pestaña "6. Trazabilidad" se agregó una sección para ver,
-  filtrar por placa y eliminar estos registros de días sin viaje.
-
-CAMBIOS EN ESTA VERSIÓN (v4.9 - LIMPIEZA):
-- ELIMINADO: todo el módulo de control de combustible por sobreconsumo
-  (columna galones_reales, método obtener_viajes_con_consumo).
-- ELIMINADO: todo el módulo de Cuentas por Pagar/Cobrar (tabla
-  cuentas_por_pagar_cobrar y sus métodos guardar_cuenta, obtener_cuentas,
-  marcar_cuenta_pagada, eliminar_cuenta). Ninguno de los dos módulos tenía
-  una pestaña visible en la interfaz.
-- REORGANIZADO: la pestaña "8. Liquidaciones" ahora tiene el orden:
-  1. 🔍 Ver Viajes de un Conductor
-  2. 💰 Saldo con Conductores (Anticipo vs. Legalización) — con la opción
-     de registrar si "ya me pagó" o "ya le pagué" (conciliación).
-  3. 📋 Comisión a Pagar por Conductor
-
-CAMBIOS EN ESTA VERSIÓN (v4.10 - COMISIÓN DE CONDUCTOR MANUAL):
-- NUEVO: en la pestaña "4. Cálculo de Viaje" se agregó la opción de
-  digitar manualmente la Comisión del Conductor para un viaje puntual.
-  Por defecto se sigue usando el valor predeterminado calculado según el
-  tipo de ruta y el número de viajes; si el usuario diligencia un valor,
-  ese valor manual reemplaza al calculado SOLO para ese viaje.
-- NUEVO: la misma opción de comisión manual está disponible también al
-  editar un viaje ya guardado, en la pestaña "6. Trazabilidad".
-
-CAMBIOS EN ESTA VERSIÓN (v4.11 - PARQUEO MANUAL Y CRUCE FRONTERA SELECCIONABLE):
-- CAMBIADO: el checkbox "¿Hubo parqueo?" (que calculaba automáticamente
-  $15.000 x días de viaje) fue reemplazado por un campo manual "Parqueo
-  (COP)" donde se digita directamente el valor real de parqueo de ese
-  viaje puntual. Aplica tanto al crear un viaje nuevo como al editar uno
-  ya guardado (pestaña "6. Trazabilidad").
-- NUEVO: cuando se marca "¿Es viaje a frontera?" ahora aparece un selector
-  para elegir el valor del Cruce de Frontera de ese viaje puntual, entre
-  $560.000 (valor por defecto) o $350.000. Aplica tanto al crear un viaje
-  nuevo como al editarlo.
-
-CAMBIOS EN ESTA VERSIÓN (v4.12 - CORRECCIÓN: CHECKBOX FRONTERA FUERA DEL FORM):
-- CORREGIDO: "¿Es viaje a frontera?" y el selector de Cruce de Frontera
-  (crear y editar viaje) estaban dentro de un st.form. Streamlit NO
-  re-ejecuta el script cuando cambias un widget dentro de un form (solo al
-  pulsar el botón de envío), así que marcar la casilla no hacía aparecer el
-  selector de $560.000 / $350.000 en pantalla, y el primer cálculo se hacía
-  siempre con el valor por defecto. Ahora ambos widgets se sacaron del form
-  (igual que ya se hacía con la distancia, el consumo y la comisión
-  manual), así aparecen y se pueden usar de inmediato al marcar la casilla,
-  antes de pulsar "Calcular"/"Guardar". El campo de Parqueo (COP) no tenía
-  este problema (no depende de otro widget) y sigue funcionando igual.
 """
 
 import streamlit as st
@@ -277,6 +197,9 @@ class DatabaseManager:
                     consumo_aguachica = COALESCE(consumo_aguachica, consumo_km_galon),
                     consumo_riohacha = COALESCE(consumo_riohacha, consumo_km_galon)
             """)
+
+            # ---------------- NUEVO: Conductor habitual por tractomula ----------------
+            cursor.execute("ALTER TABLE tractomulas ADD COLUMN IF NOT EXISTS conductor_habitual TEXT DEFAULT ''")
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS conductores (
@@ -780,14 +703,14 @@ class DatabaseManager:
                 INSERT INTO tractomulas (
                     placa, consumo_km_galon, tipo,
                     consumo_urbano, consumo_regional, consumo_frontera,
-                    consumo_aguachica, consumo_riohacha
+                    consumo_aguachica, consumo_riohacha, conductor_habitual
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
                 tractomula.placa, tractomula.consumo_km_galon, tractomula.tipo,
                 tractomula.consumo_urbano, tractomula.consumo_regional,
                 tractomula.consumo_frontera, tractomula.consumo_aguachica,
-                tractomula.consumo_riohacha
+                tractomula.consumo_riohacha, tractomula.conductor_habitual
             ))
             conn.commit()
             return True
@@ -797,7 +720,8 @@ class DatabaseManager:
             self.release_connection(conn)
 
     def actualizar_tractomula(self, tractomula):
-        """Actualiza el tipo y los consumos km/galón por tipo de ruta de una tractomula existente."""
+        """Actualiza el tipo, los consumos km/galón por tipo de ruta y el conductor habitual
+        de una tractomula existente."""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -808,12 +732,13 @@ class DatabaseManager:
                     consumo_regional = %s,
                     consumo_frontera = %s,
                     consumo_aguachica = %s,
-                    consumo_riohacha = %s
+                    consumo_riohacha = %s,
+                    conductor_habitual = %s
                 WHERE placa = %s
             ''', (
                 tractomula.tipo, tractomula.consumo_urbano, tractomula.consumo_regional,
                 tractomula.consumo_frontera, tractomula.consumo_aguachica,
-                tractomula.consumo_riohacha, tractomula.placa
+                tractomula.consumo_riohacha, tractomula.conductor_habitual, tractomula.placa
             ))
             conn.commit()
             return True
@@ -830,7 +755,7 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT placa, consumo_km_galon, tipo,
                        consumo_urbano, consumo_regional, consumo_frontera,
-                       consumo_aguachica, consumo_riohacha
+                       consumo_aguachica, consumo_riohacha, conductor_habitual
                 FROM tractomulas ORDER BY placa
             """)
             tractomulas = []
@@ -844,6 +769,7 @@ class DatabaseManager:
                     consumo_frontera=row[5] or row[1] or 0.0,
                     consumo_aguachica=row[6] or row[1] or 0.0,
                     consumo_riohacha=row[7] or row[1] or 0.0,
+                    conductor_habitual=row[8] or "",
                 ))
             return tractomulas
         finally:
@@ -1092,10 +1018,6 @@ class DatabaseManager:
 
     # ---------------- Saldo acumulado con conductores (anticipo - legalización) ----------------
     def obtener_saldo_por_conductor(self):
-        """Suma histórica y permanente de anticipo, legalización y saldo (anticipo - legalización)
-        de TODOS los viajes agrupados por conductor. saldo > 0 => el conductor te debe a ti
-        (le diste más anticipo del que gastó). saldo < 0 => tú le debes a él (gastó más de lo
-        que le diste)."""
         conn = self.get_connection()
         try:
             query = """
@@ -1114,10 +1036,6 @@ class DatabaseManager:
             self.release_connection(conn)
 
     def obtener_viajes_saldo_conductor(self, conductor):
-        """Detalle viaje por viaje (fecha, ruta, placa, anticipo, legalización, saldo) de UN
-        conductor específico, solo los viajes donde hubo anticipo o legalización (es decir,
-        donde de verdad se movió plata), para poder mostrar el motivo puntual de cada
-        diferencia en el saldo acumulado."""
         conn = self.get_connection()
         try:
             query = """
@@ -1133,9 +1051,6 @@ class DatabaseManager:
 
     # ---------------- Conciliaciones de saldo con conductores (marcar pagado/cobrado) ----------------
     def guardar_conciliacion_saldo(self, conductor, fecha, tipo, monto, observaciones=""):
-        """Registra que se PAGÓ al conductor lo que se le debía (tipo='pago') o que se le
-        COBRÓ lo que él debía (tipo='cobro'). Esto no borra el histórico de viajes, solo
-        ajusta el saldo pendiente mostrado hacia adelante."""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -1181,10 +1096,6 @@ class DatabaseManager:
             self.release_connection(conn)
 
     def obtener_ajuste_neto_por_conductor(self):
-        """Ajuste neto por conductor a partir de las conciliaciones registradas:
-        pagos (lo que le pagaste de lo que le debías) suman al saldo pendiente (lo acercan a 0
-        desde negativo), cobros (lo que le cobraste de lo que te debía) restan al saldo
-        pendiente (lo acercan a 0 desde positivo)."""
         conn = self.get_connection()
         try:
             query = """
@@ -1203,9 +1114,6 @@ class DatabaseManager:
 
 
     def obtener_comisiones_por_conductor(self):
-        """Suma histórica de comisión de conductor (lo que se le debe pagar por sus viajes)
-        agrupada por conductor. Es un reporte en vivo calculado directamente de los viajes,
-        sin depender de registros de liquidación guardados."""
         conn = self.get_connection()
         try:
             query = """
@@ -1223,8 +1131,6 @@ class DatabaseManager:
 
     # ---------------- NUEVO v4.8: Métodos para Días Sin Viaje ----------------
     def guardar_dia_sin_viaje(self, fecha, placa, conductor="", motivo="", observaciones=""):
-        """Registra un día en el que la tractomula NO hizo viaje. Solo para trazabilidad,
-        no calcula ni guarda ningún costo, gasto, flete o utilidad."""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -1287,6 +1193,7 @@ class Tractomula:
     consumo_frontera: float = 0.0
     consumo_aguachica: float = 0.0
     consumo_riohacha: float = 0.0
+    conductor_habitual: str = ""
 
 
 @dataclass
@@ -1343,8 +1250,6 @@ class DatosColombia:
     LLANTAS_KM = 80000
     ACEITE_COSTO = 2500000
     ACEITE_KM = 15000
-    # Valor por defecto del Cruce de Frontera. Ahora es seleccionable por viaje entre
-    # este valor y CRUCE_FRONTERA_ALT (ver pestaña "4. Cálculo de Viaje").
     CRUCE_FRONTERA = 560000
     CRUCE_FRONTERA_ALT = 350000
     MARGEN_ANT_EMPRESA = 0.90
@@ -1354,7 +1259,7 @@ class DatosColombia:
     AGOFER_CARGUE_DESCARGUE = 30000
 
 
-# ==================== ASIGNACION DE CONDUCTORES ====================
+# ==================== ASIGNACION DE CONDUCTORES (LEGADO, respaldo) ====================
 PLACA_CONDUCTOR = {
     "NOX459": "GONZALO PINTO",
     "NOX460": "JOSE ORTEGA PEREZ",
@@ -1394,8 +1299,6 @@ class CalculadoraCostos:
         self.dias_viaje = dias_viaje
         self.numero_viajes = numero_viajes
         self.es_frontera = es_frontera
-        # Parqueo: valor digitado manualmente por el usuario para este viaje puntual
-        # (ya NO se calcula automáticamente como $/día).
         self.parqueo = parqueo if parqueo else 0.0
         self.flypass = flypass
         self.peajes = peajes
@@ -1412,18 +1315,9 @@ class CalculadoraCostos:
         self.datos = datos
         self.peso = peso
         self.cliente = cliente
-        # Distancia base del viaje: por defecto la de la ruta seleccionada, pero se puede
-        # sobreescribir puntualmente cuando la misma ruta tuvo un recorrido distinto ese día.
         self.distancia_km_base = distancia_km_override if distancia_km_override and distancia_km_override > 0 else ruta.distancia_km
-        # Consumo km/galón: por defecto el de la tractomula según tipo de ruta, pero editable
-        # puntualmente cuando ese viaje específico tuvo un rendimiento distinto.
         self.consumo_km_galon_override = consumo_km_galon_override
-        # Comisión del conductor: por defecto se calcula según el tipo de ruta y el número de
-        # viajes (ver calcular_comision_conductor), pero se puede fijar manualmente para un
-        # viaje puntual si el usuario diligencia un valor.
         self.comision_conductor_override = comision_conductor_override
-        # Cruce de Frontera: por defecto se usa datos.CRUCE_FRONTERA ($560.000), pero se puede
-        # elegir manualmente entre $560.000 y $350.000 (datos.CRUCE_FRONTERA_ALT) para este viaje.
         self.cruce_frontera_override = cruce_frontera_override
 
     def aplica_formula_agofer(self) -> bool:
@@ -1452,31 +1346,23 @@ class CalculadoraCostos:
         # sobre el cálculo automático según tipo de ruta / número de viajes.
         if self.comision_conductor_override is not None and self.comision_conductor_override > 0:
             return self.comision_conductor_override
-        if self.ruta.es_aguachica:
-            return self.datos.COMISION_AGUACHICA
-        elif self.ruta.es_riohacha:
-            return self.datos.COMISION_RIOACHA
-        elif self.ruta.es_regional:
-            return self.datos.COMISION_REGIONAL
-        elif self.es_frontera:
-            return self.datos.COMISION_FRONTERA
-        else:
-            return self.datos.COMISION_URBANO_DIA * self.numero_viajes
+        return self.calcular_comision_conductor_predeterminada()
 
     def calcular_comision_conductor_predeterminada(self) -> float:
-        """Devuelve el valor de comisión que se calcularía automáticamente según el tipo de
-        ruta y el número de viajes, IGNORANDO cualquier valor manual. Se usa solo para
-        mostrarle al usuario cuál sería el valor por defecto antes de decidir si lo cambia."""
+        """Comisión base según el tipo de ruta, multiplicada SIEMPRE por el Número de Viajes.
+        Ej: comisión base 180.000 y 2 viajes ese día => 360.000. Aplica a TODOS los tipos de
+        ruta (Urbano, Regional, Frontera, Aguachica, Riohacha)."""
         if self.ruta.es_aguachica:
-            return self.datos.COMISION_AGUACHICA
+            base = self.datos.COMISION_AGUACHICA
         elif self.ruta.es_riohacha:
-            return self.datos.COMISION_RIOACHA
+            base = self.datos.COMISION_RIOACHA
         elif self.ruta.es_regional:
-            return self.datos.COMISION_REGIONAL
+            base = self.datos.COMISION_REGIONAL
         elif self.es_frontera:
-            return self.datos.COMISION_FRONTERA
+            base = self.datos.COMISION_FRONTERA
         else:
-            return self.datos.COMISION_URBANO_DIA * self.numero_viajes
+            base = self.datos.COMISION_URBANO_DIA
+        return base * self.numero_viajes
 
     def calcular_mantenimiento(self) -> float:
         return (self.datos.MANTENIMIENTO_MENSUAL / 30) * self.dias_viaje
@@ -1501,9 +1387,6 @@ class CalculadoraCostos:
         return costo_por_km * self.distancia_efectiva
 
     def obtener_consumo_km_galon(self) -> float:
-        """Devuelve el consumo (km/galón) a usar en este viaje: si el usuario editó puntualmente
-        el consumo para este viaje, se usa ese valor; si no, se usa el de la tractomula según el
-        TIPO DE RUTA del viaje (comportamiento por defecto, sin cambios)."""
         if self.consumo_km_galon_override and self.consumo_km_galon_override > 0:
             return self.consumo_km_galon_override
         if self.ruta.es_aguachica:
@@ -1531,14 +1414,11 @@ class CalculadoraCostos:
     def calcular_cruce_frontera(self) -> float:
         if not self.es_frontera:
             return 0
-        # Si el usuario eligió manualmente el valor del cruce de frontera para este viaje
-        # (560.000 o 350.000), ese valor tiene prioridad sobre el predeterminado.
         if self.cruce_frontera_override is not None and self.cruce_frontera_override > 0:
             return self.cruce_frontera_override
         return self.datos.CRUCE_FRONTERA
 
     def calcular_parqueo(self) -> float:
-        # Valor de parqueo digitado manualmente por el usuario para este viaje puntual.
         return self.parqueo if self.parqueo else 0.0
 
     def calcular_legalizacion(self) -> float:
@@ -1995,9 +1875,9 @@ def main():
 
     if 'tractomulas' not in st.session_state:
         st.session_state.tractomulas = _tractomulas_cached(st.session_state.db)
-    elif st.session_state.tractomulas and not hasattr(st.session_state.tractomulas[0], 'consumo_urbano'):
-        # Sesión con objetos de una versión anterior del código (sin los campos nuevos
-        # de consumo por tipo de ruta): forzar recarga fresca desde la base de datos.
+    elif st.session_state.tractomulas and not hasattr(st.session_state.tractomulas[0], 'conductor_habitual'):
+        # Sesión con objetos de una versión anterior del código (sin conductor_habitual):
+        # forzar recarga fresca desde la base de datos.
         _tractomulas_cached.clear()
         st.session_state.tractomulas = st.session_state.db.obtener_tractomulas()
 
@@ -2006,8 +1886,6 @@ def main():
     if 'rutas' not in st.session_state:
         st.session_state.rutas = _rutas_cached(st.session_state.db)
     elif st.session_state.rutas and not hasattr(st.session_state.rutas[0], 'id'):
-        # Sesión con objetos Ruta de una versión anterior (sin el campo id, necesario
-        # para distinguir variantes con el mismo origen/destino y distinto km).
         _rutas_cached.clear()
         st.session_state.rutas = st.session_state.db.obtener_rutas()
 
@@ -2033,12 +1911,13 @@ def main():
 
 **Comisiones conductor:**
 - Urbano/Normal: ${formatear_numero(datos.COMISION_URBANO_DIA)} x N° de viajes del día
-- Regional: ${formatear_numero(datos.COMISION_REGIONAL)}
-- Riohacha: ${formatear_numero(datos.COMISION_RIOACHA)}
-- Aguachica: ${formatear_numero(datos.COMISION_AGUACHICA)}
-- Frontera: ${formatear_numero(datos.COMISION_FRONTERA)}
-- Estos valores son el PREDETERMINADO; en cada viaje se puede fijar una
-  comisión manual distinta si es necesario (pestaña "4. Cálculo de Viaje").
+- Regional: ${formatear_numero(datos.COMISION_REGIONAL)} x N° de viajes del día
+- Riohacha: ${formatear_numero(datos.COMISION_RIOACHA)} x N° de viajes del día
+- Aguachica: ${formatear_numero(datos.COMISION_AGUACHICA)} x N° de viajes del día
+- Frontera: ${formatear_numero(datos.COMISION_FRONTERA)} x N° de viajes del día
+- **TODAS las rutas multiplican la comisión por el N° de Viajes** (ej: comisión base
+  $180.000 y 2 viajes = $360.000). Estos valores son el PREDETERMINADO; en cada viaje
+  se puede fijar una comisión manual distinta si es necesario (pestaña "4. Cálculo de Viaje").
 
 **Consumo (km/galón):**
 - Ahora es específico por tractomula Y por tipo de ruta (urbano, regional,
@@ -2243,6 +2122,8 @@ def main():
         st.caption("💡 El rendimiento (km/galón) de una misma tractomula cambia según el tipo de ruta "
                    "(por ejemplo: 5 km/gal en urbano, 7 km/gal en regional). Define un valor para cada tipo; "
                    "el sistema elige automáticamente el correcto según la ruta del viaje.")
+        st.caption("👤 Define aquí el **Conductor Habitual** de cada tractomula: al elegir la placa en la "
+                   "pestaña '4. Cálculo de Viaje', el conductor se autocompletará solo.")
 
         placas_opciones = ['(Escribir nueva)'] + sorted(PLACA_CONDUCTOR.keys())
         placa_seleccion = st.selectbox("Placa", placas_opciones, key="tractomula_placa_sel")
@@ -2252,11 +2133,23 @@ def main():
         else:
             placa = placa_seleccion
 
+        nombres_conductores_reg = [c.nombre for c in st.session_state.conductores] if st.session_state.conductores else []
+        opciones_conductor_habitual = ['(Ninguno)'] + nombres_conductores_reg
+
         with st.form(key="form_tractomula"):
             col1, col2 = st.columns(2)
             with col1:
                 st.write(f"**Placa seleccionada:** {placa or '(sin definir)'}")
                 tipo = st.selectbox("Tipo", ["Sencilla", "Dobletroque", "Minimula", "Otro"])
+                _default_idx_cond = (
+                    opciones_conductor_habitual.index(PLACA_CONDUCTOR[placa])
+                    if placa in PLACA_CONDUCTOR and PLACA_CONDUCTOR[placa] in opciones_conductor_habitual
+                    else 0
+                )
+                conductor_habitual_nueva = st.selectbox(
+                    "👤 Conductor Habitual (se autocompletará al elegir esta placa en Tab 4)",
+                    opciones_conductor_habitual, index=_default_idx_cond, key="nueva_conductor_habitual"
+                )
             with col2:
                 st.write("**Consumo por tipo de ruta (km/galón)**")
 
@@ -2274,11 +2167,12 @@ def main():
 
             submit = st.form_submit_button("Agregar Tractomula")
             if submit and placa:
+                cond_habitual_val = "" if conductor_habitual_nueva == '(Ninguno)' else conductor_habitual_nueva
                 tractomula = Tractomula(
                     placa=placa, consumo_km_galon=consumo_urbano, tipo=tipo,
                     consumo_urbano=consumo_urbano, consumo_regional=consumo_regional,
                     consumo_frontera=consumo_frontera, consumo_aguachica=consumo_aguachica,
-                    consumo_riohacha=consumo_riohacha
+                    consumo_riohacha=consumo_riohacha, conductor_habitual=cond_habitual_val
                 )
                 if db.guardar_tractomula(tractomula):
                     _refrescar_tractomulas(db)
@@ -2294,8 +2188,9 @@ def main():
             for idx, t in enumerate(st.session_state.tractomulas):
                 col1, col2 = st.columns([4, 1])
                 with col1:
+                    cond_hab_txt = t.conductor_habitual if t.conductor_habitual else "sin definir"
                     st.write(
-                        f"**{t.placa}** ({t.tipo}) — "
+                        f"**{t.placa}** ({t.tipo}) — 👤 Conductor habitual: **{cond_hab_txt}** — "
                         f"Urbano: {t.consumo_urbano} km/gal | Regional: {t.consumo_regional} km/gal | "
                         f"Frontera: {t.consumo_frontera} km/gal | Aguachica: {t.consumo_aguachica} km/gal | "
                         f"Riohacha: {t.consumo_riohacha} km/gal"
@@ -2309,6 +2204,14 @@ def main():
 
                 with st.expander(f"✏️ Editar consumos de {t.placa}"):
                     with st.form(key=f"form_editar_tractomula_{idx}"):
+                        _idx_cond_edit = (
+                            opciones_conductor_habitual.index(t.conductor_habitual)
+                            if t.conductor_habitual in opciones_conductor_habitual else 0
+                        )
+                        e_conductor_habitual = st.selectbox(
+                            "👤 Conductor Habitual", opciones_conductor_habitual,
+                            index=_idx_cond_edit, key=f"edit_conductor_habitual_{idx}"
+                        )
                         ecol1, ecol2, ecol3, ecol4, ecol5 = st.columns(5)
                         with ecol1:
                             e_urbano = st.number_input("Urbano", min_value=0.0, value=float(t.consumo_urbano), step=0.1, key=f"edit_urbano_{idx}")
@@ -2327,11 +2230,12 @@ def main():
                             key=f"edit_tipo_{idx}"
                         )
                         if st.form_submit_button("💾 Guardar cambios"):
+                            e_cond_habitual_val = "" if e_conductor_habitual == '(Ninguno)' else e_conductor_habitual
                             t_editada = Tractomula(
                                 placa=t.placa, consumo_km_galon=e_urbano, tipo=e_tipo,
                                 consumo_urbano=e_urbano, consumo_regional=e_regional,
                                 consumo_frontera=e_frontera, consumo_aguachica=e_aguachica,
-                                consumo_riohacha=e_riohacha
+                                consumo_riohacha=e_riohacha, conductor_habitual=e_cond_habitual_val
                             )
                             if db.actualizar_tractomula(t_editada):
                                 _refrescar_tractomulas(db)
@@ -2535,9 +2439,6 @@ def main():
         st.header("Realizar Cálculo de Viaje")
 
         # ---------------- Aviso persistente del último viaje guardado ----------------
-        # No desaparece solo en el siguiente rerun (a diferencia de st.success dentro del
-        # form), para que sea imposible no darse cuenta de que SÍ se guardó y evitar así
-        # que se vuelva a guardar el mismo viaje por error.
         if st.session_state.get('ultimo_guardado_info'):
             info = st.session_state.ultimo_guardado_info
             col_aviso, col_cerrar = st.columns([6, 1])
@@ -2639,15 +2540,16 @@ def main():
                     tractomula_obj = next(t for t in st.session_state.tractomulas if t.placa == tractomula_selec)
 
                     conductores = [c.nombre for c in st.session_state.conductores]
-                    conductor_asignado = PLACA_CONDUCTOR.get(tractomula_selec)
+                    # Conductor habitual: primero el que está guardado en la tractomula (Tab 1);
+                    # si no tiene, usar el mapa legado PLACA_CONDUCTOR como respaldo.
+                    conductor_asignado = tractomula_obj.conductor_habitual or PLACA_CONDUCTOR.get(tractomula_selec)
                     conductor_index = conductores.index(conductor_asignado) if conductor_asignado in conductores else 0
                     conductor_selec = st.selectbox("Selecciona Conductor", conductores, index=conductor_index, key="sel_conductor")
                     conductor_obj = next(c for c in st.session_state.conductores if c.nombre == conductor_selec)
+                    if conductor_asignado in conductores:
+                        st.caption(f"👤 Conductor autocompletado según el habitual de {tractomula_selec}. Puedes cambiarlo si aplica.")
 
                 with col2:
-                    # Las rutas con el mismo origen→destino pero distinta distancia se muestran
-                    # como variantes independientes (con el km en la etiqueta) y se identifican
-                    # por su id, para poder elegir la correcta sin ambigüedad.
                     rutas_opciones_ids = [r.id for r in st.session_state.rutas]
 
                     def _etiqueta_ruta(rid):
@@ -2662,7 +2564,7 @@ def main():
                     numero_viajes = st.number_input(
                         "🚛 Número de viajes",
                         min_value=1, value=1, step=1, key="sel_numero_viajes",
-                        help="Cuántos viajes hizo el conductor este día. Afecta la Comisión Conductor Urbano/Normal, y para el cliente AGOFER en rutas urbanas también afecta el Flete, el Cargue/Descargue y la distancia recorrida."
+                        help="Cuántos viajes hizo el conductor este día. Ahora multiplica la Comisión Conductor en TODOS los tipos de ruta (ej: comisión base $180.000 x 2 viajes = $360.000), y para el cliente AGOFER en rutas urbanas también afecta el Flete, el Cargue/Descargue y la distancia recorrida."
                     )
                     fecha_viaje = st.date_input(
                         "📅 Fecha del viaje",
@@ -2754,19 +2656,20 @@ def main():
                 if consumo_override and consumo_override > 0:
                     st.caption(f"⛽ Se usará {consumo_override} km/galón en vez de los {_consumo_previo} km/galón por defecto.")
 
-                # ---------------- NUEVO v4.10: Comisión del conductor manual (opcional) ----------------
+                # ---------------- Comisión del conductor manual (opcional) ----------------
                 if ruta_obj.es_aguachica:
-                    comision_predeterminada = datos.COMISION_AGUACHICA
+                    comision_base = datos.COMISION_AGUACHICA
                 elif ruta_obj.es_riohacha:
-                    comision_predeterminada = datos.COMISION_RIOACHA
+                    comision_base = datos.COMISION_RIOACHA
                 elif ruta_obj.es_regional:
-                    comision_predeterminada = datos.COMISION_REGIONAL
+                    comision_base = datos.COMISION_REGIONAL
                 elif ruta_obj.es_frontera:
-                    comision_predeterminada = datos.COMISION_FRONTERA
+                    comision_base = datos.COMISION_FRONTERA
                 else:
-                    comision_predeterminada = datos.COMISION_URBANO_DIA * numero_viajes
+                    comision_base = datos.COMISION_URBANO_DIA
+                comision_predeterminada = comision_base * numero_viajes
 
-                st.caption(f"💼 Comisión del conductor predeterminada para esta ruta: **${formatear_numero(comision_predeterminada)}**. "
+                st.caption(f"💼 Comisión del conductor predeterminada para esta ruta: **${formatear_numero(comision_base)}** x {numero_viajes} viaje(s) = **${formatear_numero(comision_predeterminada)}**. "
                            f"Se calcula automáticamente según el tipo de ruta y el N° de viajes.")
 
                 comision_override_texto = st.text_input(
@@ -2782,11 +2685,7 @@ def main():
                 if comision_override and comision_override > 0:
                     st.caption(f"💼 Se usará ${formatear_numero(comision_override)} en vez de los ${formatear_numero(comision_predeterminada)} por defecto.")
 
-                # ---------------- NUEVO v4.12: ¿Es viaje a frontera? y Cruce de Frontera FUERA del form ----------------
-                # Se sacan del st.form (igual que distancia/consumo/comisión) porque Streamlit
-                # NO re-ejecuta el script al marcar un checkbox dentro de un form -- solo al
-                # pulsar el botón de envío. Si se dejan dentro, el selector de $560.000/$350.000
-                # no aparece en pantalla al marcar la casilla.
+                # ---------------- ¿Es viaje a frontera? y Cruce de Frontera FUERA del form ----------------
                 es_frontera = st.checkbox(
                     "¿Es viaje a frontera?", value=ruta_obj.es_frontera,
                     help="Afecta Comisión Conductor y Cruce Frontera",
@@ -2804,7 +2703,7 @@ def main():
                 else:
                     cruce_frontera_valor = datos.CRUCE_FRONTERA
 
-                # ---------------- NUEVO v4.11: Parqueo manual (fuera del form, mismo criterio) ----------------
+                # ---------------- Parqueo manual (fuera del form, mismo criterio) ----------------
                 parqueo_texto = st.text_input(
                     "🅿️ Parqueo (COP)", value="", placeholder="0",
                     help="Digita el valor real de parqueo de este viaje puntual.",
@@ -2941,7 +2840,12 @@ def main():
                         if es_frontera:
                             st.caption(f"🌐 Cruce de Frontera usado en este viaje: ${formatear_numero(costos_preview['cruce_frontera'])}")
 
-                    observaciones = st.text_area("Observaciones (opcional)", placeholder="Notas sobre este viaje...")
+                    observaciones = st.text_area(
+                        "Observaciones (opcional)",
+                        placeholder="Notas sobre este viaje... Ej: 'Operación de buque, 3 turnos'"
+                    )
+                    st.caption("📝 Si es operación de buque, anota aquí cuántos turnos hizo. Esta nota queda "
+                               "visible directamente en las tablas de Trazabilidad y Liquidaciones.")
 
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
@@ -2973,7 +2877,6 @@ def main():
                                     valor_flete, dias_viaje, numero_viajes
                                 )
                                 if duplicado:
-                                    # NO se guarda todavía: se pide confirmación explícita arriba del formulario
                                     st.session_state.viaje_pendiente_confirmar = {
                                         'calculadora': calculadora,
                                         'fecha_viaje': fecha_viaje,
@@ -3121,19 +3024,21 @@ def main():
             columnas_mostrar = [
                 'id', 'fecha_viaje', 'fecha_creacion', 'placa', 'conductor', 'origen', 'destino',
                 'cliente', 'peso', 'distancia_km', 'dias_viaje', 'numero_viajes', 'total_gastos', 'valor_flete',
-                'utilidad', 'rentabilidad'
+                'utilidad', 'rentabilidad', 'observaciones'
             ]
 
             df_mostrar = df_viajes[columnas_mostrar].copy()
             df_mostrar.columns = [
                 'ID', 'Fecha del Viaje', 'Fecha Registro', 'Placa', 'Conductor', 'Origen', 'Destino',
-                'Cliente', 'Peso (kg)', 'Km', 'Días', 'N° Viajes', 'Total Gastos', 'Valor Flete', 'Utilidad', 'Rentabilidad %'
+                'Cliente', 'Peso (kg)', 'Km', 'Días', 'N° Viajes', 'Total Gastos', 'Valor Flete', 'Utilidad',
+                'Rentabilidad %', 'Observaciones'
             ]
 
             df_mostrar['Total Gastos'] = df_mostrar['Total Gastos'].apply(lambda x: f"${formatear_numero(x)}")
             df_mostrar['Valor Flete'] = df_mostrar['Valor Flete'].apply(lambda x: f"${formatear_numero(x)}")
             df_mostrar['Utilidad'] = df_mostrar['Utilidad'].apply(lambda x: f"${formatear_numero(x)}")
             df_mostrar['Rentabilidad %'] = df_mostrar['Rentabilidad %'].apply(lambda x: f"{x:.1f}%")
+            df_mostrar['Observaciones'] = df_mostrar['Observaciones'].fillna("")
 
             st.dataframe(df_mostrar, use_container_width=True, height=400)
 
@@ -3271,14 +3176,12 @@ def main():
                         idx_placa = placas_disponibles.index(placa_actual) if placa_actual in placas_disponibles else 0
                         idx_conductor = conductores_disponibles.index(conductor_actual) if conductor_actual in conductores_disponibles else 0
 
-                        # Rutas disponibles como variantes por id (mismo criterio que Tab 4)
                         rutas_ids_disponibles = [r.id for r in st.session_state.rutas]
 
                         def _etiqueta_ruta_edit(rid):
                             r = next(rr for rr in st.session_state.rutas if rr.id == rid)
                             return f"{r.origen} → {r.destino} ({formatear_numero(r.distancia_km)} km)"
 
-                        # Intentar preseleccionar la ruta cuyo origen/destino coincidan con el viaje guardado
                         ruta_actual_candidatas = [r for r in st.session_state.rutas if r.origen == viaje[4] and r.destino == viaje[5]]
                         ruta_id_actual = ruta_actual_candidatas[0].id if ruta_actual_candidatas else (rutas_ids_disponibles[0] if rutas_ids_disponibles else None)
                         idx_ruta = rutas_ids_disponibles.index(ruta_id_actual) if ruta_id_actual in rutas_ids_disponibles else 0
@@ -3302,7 +3205,7 @@ def main():
                                 "🚛 Número de viajes", min_value=1,
                                 value=int(viaje[46]) if len(viaje) > 46 and viaje[46] else 1,
                                 step=1, key="edit_numero_viajes_preview",
-                                help="Afecta la Comisión Conductor Urbano/Normal, y para AGOFER en rutas urbanas también el Flete, Cargue/Descargue y la distancia."
+                                help="Multiplica la Comisión Conductor en TODOS los tipos de ruta, y para AGOFER en rutas urbanas también el Flete, Cargue/Descargue y la distancia."
                             )
                             edit_cliente_preview = st.text_input(
                                 "🏢 Cliente", value=(viaje[44] if len(viaje) > 44 and viaje[44] else ""), key="edit_cliente_preview"
@@ -3324,19 +3227,20 @@ def main():
                                     f"Cargue/Descargue sugerido ${formatear_numero(edit_cargue_sugerido)}"
                                 )
 
-                            # ---------------- NUEVO v4.10: Comisión del conductor manual (edición) ----------------
+                            # ---------------- Comisión del conductor manual (edición) ----------------
                             if edit_ruta_obj_preview.es_aguachica:
-                                edit_comision_predeterminada = datos.COMISION_AGUACHICA
+                                edit_comision_base = datos.COMISION_AGUACHICA
                             elif edit_ruta_obj_preview.es_riohacha:
-                                edit_comision_predeterminada = datos.COMISION_RIOACHA
+                                edit_comision_base = datos.COMISION_RIOACHA
                             elif edit_ruta_obj_preview.es_regional:
-                                edit_comision_predeterminada = datos.COMISION_REGIONAL
+                                edit_comision_base = datos.COMISION_REGIONAL
                             elif edit_ruta_obj_preview.es_frontera:
-                                edit_comision_predeterminada = datos.COMISION_FRONTERA
+                                edit_comision_base = datos.COMISION_FRONTERA
                             else:
-                                edit_comision_predeterminada = datos.COMISION_URBANO_DIA * edit_numero_viajes_preview
+                                edit_comision_base = datos.COMISION_URBANO_DIA
+                            edit_comision_predeterminada = edit_comision_base * edit_numero_viajes_preview
 
-                            st.caption(f"💼 Comisión predeterminada según esta ruta: **${formatear_numero(edit_comision_predeterminada)}**.")
+                            st.caption(f"💼 Comisión predeterminada según esta ruta: **${formatear_numero(edit_comision_base)}** x {edit_numero_viajes_preview} viaje(s) = **${formatear_numero(edit_comision_predeterminada)}**.")
                             edit_comision_override_texto = st.text_input(
                                 "💼 Comisión del conductor para este viaje (COP) — opcional",
                                 value=formatear_numero(viaje[12]) if viaje[12] and float(viaje[12]) != edit_comision_predeterminada else "",
@@ -3348,10 +3252,7 @@ def main():
                             if edit_comision_override and edit_comision_override > 0:
                                 st.caption(f"💼 Se usará ${formatear_numero(edit_comision_override)} en vez de los ${formatear_numero(edit_comision_predeterminada)} por defecto.")
 
-                            # ---------------- NUEVO v4.12: ¿Es viaje a frontera? y Cruce de Frontera FUERA del form (edición) ----------------
-                            # Mismo motivo que en la creación: dentro de un st.form el checkbox no
-                            # dispara un rerun al marcarlo, así que el selector de $560.000/$350.000
-                            # no aparecía. Se sacan ambos widgets antes de abrir el form de edición.
+                            # ---------------- ¿Es viaje a frontera? y Cruce de Frontera FUERA del form (edición) ----------------
                             edit_es_frontera = st.checkbox(
                                 "¿Es viaje a frontera?", value=bool(viaje[8]), key="edit_frontera"
                             )
@@ -3368,7 +3269,7 @@ def main():
                             else:
                                 edit_cruce_frontera_valor = datos.CRUCE_FRONTERA
 
-                            # ---------------- NUEVO v4.11: Parqueo manual (edición) — también fuera del form ----------------
+                            # ---------------- Parqueo manual (edición) — también fuera del form ----------------
                             edit_parqueo_texto = st.text_input(
                                 "🅿️ Parqueo (COP)",
                                 value=formatear_numero(viaje[25]) if viaje[25] else "",
@@ -3528,7 +3429,7 @@ def main():
             rutas_df = pd.DataFrame(stats['rutas_frecuentes'], columns=['Origen', 'Destino', 'Cantidad'])
             st.dataframe(rutas_df, use_container_width=True, hide_index=True)
 
-        # ---------------- NUEVO v4.8: Días Sin Viaje (solo trazabilidad) ----------------
+        # ---------------- Días Sin Viaje (solo trazabilidad) ----------------
         st.divider()
         st.subheader("📭 Días Sin Viaje Registrados")
         st.caption("Registros de días en que la tractomula NO hizo viaje. No afectan ningún cálculo financiero, son solo para historial.")
@@ -3652,8 +3553,6 @@ def main():
 
             df_detalle_liq = db.buscar_viajes(fecha_ini_str_liq, fecha_fin_str_liq, None, conductor_filtro_liq, None, None, None)
             if not df_detalle_liq.empty:
-                # buscar_viajes filtra conductor con ILIKE (coincidencia parcial); nos aseguramos
-                # de dejar solo el conductor exacto seleccionado.
                 df_detalle_liq = df_detalle_liq[df_detalle_liq['conductor'] == conductor_filtro_liq]
 
             if df_detalle_liq.empty:
@@ -3668,9 +3567,10 @@ def main():
                 with col2:
                     st.metric("💰 Total Comisión", f"${formatear_numero(total_comision_filtro)}")
 
-                df_mostrar_detalle_liq = df_detalle_liq[['id', 'fecha_viaje', 'placa', 'origen', 'destino', 'comision_conductor', 'numero_viajes']].copy()
+                df_mostrar_detalle_liq = df_detalle_liq[['id', 'fecha_viaje', 'placa', 'origen', 'destino', 'comision_conductor', 'numero_viajes', 'observaciones']].copy()
                 df_mostrar_detalle_liq['comision_conductor'] = df_mostrar_detalle_liq['comision_conductor'].apply(lambda x: f"${formatear_numero(x)}")
-                df_mostrar_detalle_liq.columns = ['ID', 'Fecha Viaje', 'Placa', 'Origen', 'Destino', 'Comisión', 'N° Viajes']
+                df_mostrar_detalle_liq['observaciones'] = df_mostrar_detalle_liq['observaciones'].fillna("")
+                df_mostrar_detalle_liq.columns = ['ID', 'Fecha Viaje', 'Placa', 'Origen', 'Destino', 'Comisión', 'N° Viajes', 'Observaciones']
                 st.dataframe(df_mostrar_detalle_liq, use_container_width=True, hide_index=True)
 
         # ---------------- 2. Saldo con Conductores (Anticipo vs. Legalización) ----------------
@@ -3687,8 +3587,6 @@ def main():
         if df_saldo_conductores.empty:
             st.info("No hay viajes registrados todavía para calcular saldos.")
         else:
-            # Aplicar los ajustes de conciliación (pagos/cobros ya registrados) al saldo histórico
-            # para obtener el saldo PENDIENTE real.
             df_saldo_conductores = df_saldo_conductores.copy()
             if not df_ajustes_saldo.empty:
                 mapa_ajustes = dict(zip(df_ajustes_saldo['conductor'], df_ajustes_saldo['ajuste_neto']))
