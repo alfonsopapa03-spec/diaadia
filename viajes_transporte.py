@@ -1342,10 +1342,11 @@ class CalculadoraCostos:
         return self.datos.NOMINA_CONDUCTOR_DIA * self.dias_viaje
 
     def calcular_comision_conductor(self) -> float:
-        # Si el usuario fijó manualmente la comisión para este viaje, esa tiene prioridad
-        # sobre el cálculo automático según tipo de ruta / número de viajes.
+        # Si el usuario fijó manualmente la comisión POR VIAJE para este viaje, esa tiene prioridad
+        # sobre el cálculo automático según tipo de ruta, y SIEMPRE se multiplica por el Número de
+        # Viajes, igual que la comisión automática.
         if self.comision_conductor_override is not None and self.comision_conductor_override > 0:
-            return self.comision_conductor_override
+            return self.comision_conductor_override * self.numero_viajes
         return self.calcular_comision_conductor_predeterminada()
 
     def calcular_comision_conductor_predeterminada(self) -> float:
@@ -2672,18 +2673,24 @@ def main():
                 st.caption(f"💼 Comisión del conductor predeterminada para esta ruta: **${formatear_numero(comision_base)}** x {numero_viajes} viaje(s) = **${formatear_numero(comision_predeterminada)}**. "
                            f"Se calcula automáticamente según el tipo de ruta y el N° de viajes.")
 
+                _valor_comision_guardada_nueva = 0.0
                 comision_override_texto = st.text_input(
-                    "💼 Comisión del conductor para este viaje (COP) — opcional",
+                    "💼 Comisión del conductor POR VIAJE para este día (COP) — opcional",
                     value="",
-                    placeholder=f"Por defecto: {formatear_numero(comision_predeterminada)}",
-                    help="Solo diligéncialo si este viaje en particular debe pagar una comisión distinta a la "
-                         "predeterminada para esta ruta (por ejemplo, un acuerdo puntual con el conductor). Si lo "
-                         "dejas vacío, se usa el valor calculado automáticamente.",
+                    placeholder=f"Por defecto (por viaje): {formatear_numero(comision_base)}",
+                    help="Solo diligéncialo si este viaje en particular debe pagar una comisión POR VIAJE distinta "
+                         "a la predeterminada para esta ruta (por ejemplo, un acuerdo puntual con el conductor). "
+                         "Este valor se multiplica automáticamente por el N° de Viajes, igual que la comisión "
+                         "automática. Si lo dejas vacío, se usa el valor calculado automáticamente.",
                     key="sel_comision_override"
                 )
                 comision_override = limpiar_numero(comision_override_texto) if comision_override_texto else None
                 if comision_override and comision_override > 0:
-                    st.caption(f"💼 Se usará ${formatear_numero(comision_override)} en vez de los ${formatear_numero(comision_predeterminada)} por defecto.")
+                    st.caption(
+                        f"💼 Se usará ${formatear_numero(comision_override)} x {numero_viajes} viaje(s) = "
+                        f"**${formatear_numero(comision_override * numero_viajes)}** en vez de los "
+                        f"${formatear_numero(comision_predeterminada)} por defecto."
+                    )
 
                 # ---------------- ¿Es viaje a frontera? y Cruce de Frontera FUERA del form ----------------
                 es_frontera = st.checkbox(
@@ -3241,16 +3248,31 @@ def main():
                             edit_comision_predeterminada = edit_comision_base * edit_numero_viajes_preview
 
                             st.caption(f"💼 Comisión predeterminada según esta ruta: **${formatear_numero(edit_comision_base)}** x {edit_numero_viajes_preview} viaje(s) = **${formatear_numero(edit_comision_predeterminada)}**.")
+
+                            _valor_comision_guardada = float(viaje[12]) if viaje[12] else 0.0
+                            _prefill_comision_manual = (
+                                formatear_numero(_valor_comision_guardada / edit_numero_viajes_preview)
+                                if _valor_comision_guardada and edit_numero_viajes_preview > 0
+                                   and round(_valor_comision_guardada, 2) != round(edit_comision_predeterminada, 2)
+                                else ""
+                            )
+
                             edit_comision_override_texto = st.text_input(
-                                "💼 Comisión del conductor para este viaje (COP) — opcional",
-                                value=formatear_numero(viaje[12]) if viaje[12] and float(viaje[12]) != edit_comision_predeterminada else "",
-                                placeholder=f"Por defecto: {formatear_numero(edit_comision_predeterminada)}",
-                                help="Solo diligéncialo si quieres fijar manualmente la comisión de este viaje. Si lo dejas vacío, se usa el cálculo automático según la ruta.",
+                                "💼 Comisión del conductor POR VIAJE para este día (COP) — opcional",
+                                value=_prefill_comision_manual,
+                                placeholder=f"Por defecto (por viaje): {formatear_numero(edit_comision_base)}",
+                                help="Solo diligéncialo si quieres fijar manualmente la comisión POR VIAJE de este "
+                                     "viaje. Se multiplica automáticamente por el N° de Viajes. Si lo dejas vacío, "
+                                     "se usa el cálculo automático según la ruta.",
                                 key="edit_comision_override"
                             )
                             edit_comision_override = limpiar_numero(edit_comision_override_texto) if edit_comision_override_texto else None
                             if edit_comision_override and edit_comision_override > 0:
-                                st.caption(f"💼 Se usará ${formatear_numero(edit_comision_override)} en vez de los ${formatear_numero(edit_comision_predeterminada)} por defecto.")
+                                st.caption(
+                                    f"💼 Se usará ${formatear_numero(edit_comision_override)} x {edit_numero_viajes_preview} viaje(s) = "
+                                    f"**${formatear_numero(edit_comision_override * edit_numero_viajes_preview)}** en vez de los "
+                                    f"${formatear_numero(edit_comision_predeterminada)} por defecto."
+                                )
 
                             # ---------------- ¿Es viaje a frontera? y Cruce de Frontera FUERA del form (edición) ----------------
                             edit_es_frontera = st.checkbox(
